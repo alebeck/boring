@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os/user"
+	"path/filepath"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -8,9 +10,21 @@ import (
 	"github.com/alebeck/boring/internal/log"
 )
 
+const CONFIG_FILE_NAME = ".boring.toml"
+
+func Must[T any](obj T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
 func main() {
 	var conf config.Config
-	if _, err := toml.DecodeFile("example_config.toml", &conf); err != nil {
+
+	user := Must(user.Current())
+	confPath := filepath.Join(user.HomeDir, CONFIG_FILE_NAME)
+	if _, err := toml.DecodeFile(confPath, &conf); err != nil {
 		log.Fatalf("Error parsing TOML file: %v", err)
 	}
 
