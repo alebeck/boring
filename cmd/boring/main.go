@@ -37,15 +37,41 @@ func main() {
 	}
 }
 
-func controlTunnels(names []string, kind daemon.CommandKind) {
-	conf, err := config.LoadConfig()
-	if err != nil {
-		log.Fatalf("Could not load configuration: %v", err)
+// prepare loads the configuration and ensures the daemon is running
+func prepare() (*config.Config, error) {
+	var conf *config.Config
+	var err error
+	errs := make(chan error, 2)
+
+	go func() {
+		conf, err = config.LoadConfig()
+		if err != nil {
+			err = fmt.Errorf("Could not load configuration: %v", err)
+		}
+		errs <- err
+	}()
+
+	go func() {
+		_, err = daemon.EnsureAndConnect()
+		if err != nil {
+			err = fmt.Errorf("Could not start the daemon: %v", err)
+		}
+		errs <- err
+	}()
+
+	for _ = range 2 {
+		if err := <-errs; err != nil {
+			return nil, err
+		}
 	}
 
-	_, err = daemon.EnsureAndConnect()
+	return conf, nil
+}
+
+func controlTunnels(names []string, kind daemon.CommandKind) {
+	conf, err := prepare()
 	if err != nil {
-		log.Fatalf("Could not start the daemon: %v", err)
+		log.Fatalf(err.Error())
 	}
 
 	// Remove potential duplicates from names list
@@ -121,6 +147,7 @@ func transmitCommand(cmd daemon.Command) (daemon.Response, error) {
 
 func printUsage() {
 	fmt.Println("Usage:")
-	fmt.Println("  boring open,o <name1> [<name2> ...]   Open specified tunnel(s).")
-	fmt.Println("  boring close,c <name1> [<name2> ...]  Close specified tunnel(s).")
+	fmt.Println("  boring list,l						List tunnels")
+	fmt.Println("  boring open,o <name1> [<name2> ...]  Open specified tunnel(s)")
+	fmt.Println("  boring close,c <name1> [<name2> ...] Close specified tunnel(s)")
 }
