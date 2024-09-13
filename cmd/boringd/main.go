@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/alebeck/boring/internal/daemon"
@@ -14,6 +15,7 @@ import (
 )
 
 var tunnels = make(map[string]*tunnel.Tunnel)
+var mutex sync.RWMutex
 
 func main() {
 	if len(os.Args) < 3 {
@@ -52,6 +54,7 @@ func handleCleanup(l net.Listener) {
 
 	l.Close()
 
+	mutex.Lock()
 	for _, t := range tunnels {
 		t.Close()
 	}
@@ -75,12 +78,11 @@ func setupListener() (net.Listener, error) {
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
 
-	log.Infof("Handling connection...")
-
 	// Receive command
 	var cmd daemon.Command
 	if err := ipc.Receive(&cmd, conn); err != nil {
 		log.Errorf("Could not receive command: %v", err)
+		return
 	}
 
 	// Execute command
@@ -110,8 +112,9 @@ func openTunnel(t tunnel.Tunnel) error {
 		return fmt.Errorf("could not start tunnel %v: %v", t.Name, err)
 	}
 
-	// TODO put mutex around tunnels map
+	mutex.Lock()
 	tunnels[t.Name] = &t
+	mutex.Unlock()
 
 	// Register reconnection logic
 	go func() {
@@ -126,7 +129,9 @@ func openTunnel(t tunnel.Tunnel) error {
 
 func closeTunnel(q tunnel.Tunnel) error {
 	// Lookup t in local tunnels map
+	mutex.RLock()
 	t, ok := tunnels[q.Name]
+	mutex.RUnlock()
 	if !ok {
 		return fmt.Errorf("tunnel not running")
 	}
@@ -134,7 +139,9 @@ func closeTunnel(q tunnel.Tunnel) error {
 	if err := t.Close(); err != nil {
 		return fmt.Errorf("could not close tunnel: %v", err)
 	}
+	mutex.Lock()
 	delete(tunnels, t.Name)
+	mutex.Unlock()
 
 	return nil
 }
