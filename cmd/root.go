@@ -1,5 +1,0 @@
-package cmd
-
-func Execute() {
-
-}

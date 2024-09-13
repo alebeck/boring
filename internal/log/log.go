@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"time"
 )
@@ -15,19 +16,35 @@ const (
 	ColorBlue   = "\033[36m"
 )
 
+var logFile io.Writer = os.Stdout
+
 func timestamp() string {
 	currentTime := time.Now()
-	timestamp := "[" + currentTime.Format("2006/01/02 15:04:05") + "]"
+	timestamp := "[" + currentTime.Format("15:04:05") + "]"
 	return timestamp
+}
+
+func Debugf(format string, a ...any) {
+	message := fmt.Sprintf(format, a...)
+	fmt.Fprintf(logFile, "%s DEBUG %s\n", timestamp(), message)
 }
 
 func Infof(format string, a ...any) {
 	message := fmt.Sprintf(format, a...)
-	fmt.Printf("%sINFO%s %s %s\n", ColorBlue, ColorReset, timestamp(), message)
+	fmt.Fprintf(logFile, "%s %sINFO%s %s\n", timestamp(), ColorBlue, ColorReset, message)
+}
+
+func Errorf(format string, a ...any) {
+	message := fmt.Sprintf(format, a...)
+	fmt.Fprintf(logFile, "%s %sERROR%s %s\n", timestamp(), ColorRed, ColorReset, message)
 }
 
 func Fatalf(format string, a ...any) {
 	message := fmt.Sprintf(format, a...)
-	fmt.Printf("%sFATAL%s %s %s\n", ColorRed, ColorReset, timestamp(), message)
+	fmt.Fprintf(logFile, "%s %sFATAL%s %s\n", timestamp(), ColorRed, ColorReset, message)
 	os.Exit(1)
+}
+
+func SetOutput(writer io.Writer) {
+	logFile = writer
 }
