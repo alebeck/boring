@@ -13,7 +13,7 @@ import (
 
 const (
 	SOCK          = "/tmp/boringd.sock"
-	LOG_FILE      = "/Users/alex/.boringd.log"
+	LOG_FILE      = "/tmp/boringd.log"
 	EXEC          = "boringd"
 	START_TIMEOUT = 2 * time.Second
 )
