@@ -40,10 +40,10 @@ func main() {
 // prepare loads the configuration and ensures the daemon is running
 func prepare() (*config.Config, error) {
 	var conf *config.Config
-	var err error
 	errs := make(chan error, 2)
 
 	go func() {
+		var err error
 		conf, err = config.LoadConfig()
 		if err != nil {
 			err = fmt.Errorf("Could not load configuration: %v", err)
@@ -52,9 +52,9 @@ func prepare() (*config.Config, error) {
 	}()
 
 	go func() {
-		_, err = daemon.EnsureAndConnect()
+		err := daemon.Ensure()
 		if err != nil {
-			err = fmt.Errorf("Could not start the daemon: %v", err)
+			err = fmt.Errorf("Could not start daemon: %v", err)
 		}
 		errs <- err
 	}()
@@ -124,6 +124,15 @@ func controlTunnels(names []string, kind daemon.CommandKind) {
 		<-done
 	}
 }
+
+/*func listTunnels() {
+	conf, err := prepare()
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+
+	cmd := daemon.Command{Kind: daemon.List, Tunnel: nil}
+}*/
 
 func transmitCommand(cmd daemon.Command) (daemon.Response, error) {
 	empty := daemon.Response{}

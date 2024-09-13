@@ -128,11 +128,11 @@ func closeTunnel(q tunnel.Tunnel) error {
 	// Lookup t in local tunnels map
 	t, ok := tunnels[q.Name]
 	if !ok {
-		return fmt.Errorf("tunnel %v not found", t.Name)
+		return fmt.Errorf("tunnel not running")
 	}
 
 	if err := t.Close(); err != nil {
-		return fmt.Errorf("could not close tunnel %v: %v", t.Name, err)
+		return fmt.Errorf("could not close tunnel: %v", err)
 	}
 	delete(tunnels, t.Name)
 

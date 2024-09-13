@@ -24,6 +24,7 @@ const (
 	Nop CommandKind = iota
 	Open
 	Close
+	List
 )
 
 type Command struct {
@@ -36,9 +37,9 @@ type Response struct {
 	Error   string `json:"error"`
 }
 
-// EnsureDaemonAndConnect starts the daemon if it is not already running
-// and returns a connection to it. This function is blocking.
-func EnsureAndConnect() (net.Conn, error) {
+// Ensure starts the daemon if it is not already running.
+// This function is blocking.
+func Ensure() error {
 	timer := time.After(START_TIMEOUT)
 	starting := false
 	sleepTime := 2 * time.Millisecond
@@ -46,14 +47,15 @@ func EnsureAndConnect() (net.Conn, error) {
 	for {
 		select {
 		case <-timer:
-			return nil, fmt.Errorf("Daemon was not responsive after %v", START_TIMEOUT)
+			return fmt.Errorf("Daemon was not responsive after %v", START_TIMEOUT)
 		default:
 			if conn, err := Connect(); err == nil {
-				return conn, nil
+				go func() { conn.Close() }()
+				return nil
 			}
 			if !starting {
 				if err := startDaemon(EXEC, SOCK, LOG_FILE); err != nil {
-					return nil, fmt.Errorf("Failed to start daemon: %v", err)
+					return fmt.Errorf("Failed to start daemon: %v", err)
 				}
 				starting = true
 			}
