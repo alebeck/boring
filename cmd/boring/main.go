@@ -30,6 +30,8 @@ func main() {
 			os.Exit(1)
 		}
 		controlTunnels(os.Args[2:], daemon.Close)
+	case "list", "l":
+		listTunnels()
 	default:
 		fmt.Println("Unknown command:", os.Args[1])
 		printUsage()
@@ -84,13 +86,13 @@ func controlTunnels(names []string, kind daemon.CommandKind) {
 		go func() {
 			defer func() { done <- true }()
 
-			tunnel, ok := conf.TunnelsMap[name]
+			tun, ok := conf.TunnelsMap[name]
 			if !ok {
 				log.Errorf("Tunnel '%s' not found in configuration (%s).",
 					name, config.CONFIG_FILE_NAME)
 				return
 			}
-			cmd := daemon.Command{Kind: kind, Tunnel: *tunnel}
+			cmd := daemon.Command{Kind: kind, Tunnel: *tun}
 
 			response, err := transmitCommand(cmd)
 			if err != nil {
@@ -109,12 +111,12 @@ func controlTunnels(names []string, kind daemon.CommandKind) {
 			} else {
 				if kind == daemon.Open {
 					log.Infof("Opened tunnel %s: %s -> %s via %s",
-						log.ColorGreen+tunnel.Name+log.ColorReset,
-						tunnel.LocalAddress, tunnel.RemoteAddress, tunnel.SSHServer)
+						log.ColorGreen+tun.Name+log.ColorReset,
+						tun.LocalAddress, tun.RemoteAddress, tun.Host)
 				} else if kind == daemon.Close {
-					log.Infof("Closed tunnel %s", log.ColorGreen+tunnel.Name+log.ColorReset)
+					log.Infof("Closed tunnel %s", log.ColorGreen+tun.Name+log.ColorReset)
 				} else {
-					log.Infof("Executed command %v for tunnel %s", kind, tunnel.Name)
+					log.Infof("Executed command %v for tunnel %s", kind, tun.Name)
 				}
 			}
 		}()
@@ -125,14 +127,16 @@ func controlTunnels(names []string, kind daemon.CommandKind) {
 	}
 }
 
-/*func listTunnels() {
-	conf, err := prepare()
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
+func listTunnels() {
+	/*
+		conf, err := prepare()
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
 
-	cmd := daemon.Command{Kind: daemon.List, Tunnel: nil}
-}*/
+		cmd := daemon.Command{Kind: daemon.List, Tunnel: nil}
+	*/
+}
 
 func transmitCommand(cmd daemon.Command) (daemon.Response, error) {
 	empty := daemon.Response{}

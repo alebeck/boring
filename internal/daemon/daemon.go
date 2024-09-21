@@ -15,6 +15,7 @@ const (
 	SOCK          = "/tmp/boringd.sock"
 	LOG_FILE      = "/tmp/boringd.log"
 	EXEC          = "boringd"
+	INIT_WAIT     = 2 * time.Millisecond
 	START_TIMEOUT = 2 * time.Second
 )
 
@@ -42,7 +43,7 @@ type Response struct {
 func Ensure() error {
 	timer := time.After(START_TIMEOUT)
 	starting := false
-	sleepTime := 2 * time.Millisecond
+	sleepTime := INIT_WAIT
 
 	for {
 		select {

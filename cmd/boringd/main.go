@@ -108,27 +108,29 @@ func handleConnection(conn net.Conn) {
 }
 
 func openTunnel(t tunnel.Tunnel) error {
+	// TODO check if already running, i.e. whether its in the map
+
 	if err := t.Open(); err != nil {
-		return fmt.Errorf("could not start tunnel %v: %v", t.Name, err)
+		return fmt.Errorf("could not start tunnel: %v", err)
 	}
 
 	mutex.Lock()
 	tunnels[t.Name] = &t
 	mutex.Unlock()
 
-	// Register reconnection logic
+	// Register closing logic
 	go func() {
-		<-t.Disconnected
-		log.Infof("Detected disconnection of tunnel %v", t.Name)
-		// Handle reconnection or other logic here
-		// TODO
+		<-t.Closed
+		mutex.Lock()
+		delete(tunnels, t.Name)
+		mutex.Unlock()
+		log.Infof("Closed tunnel %s", t.Name)
 	}()
 
 	return nil
 }
 
 func closeTunnel(q tunnel.Tunnel) error {
-	// Lookup t in local tunnels map
 	mutex.RLock()
 	t, ok := tunnels[q.Name]
 	mutex.RUnlock()

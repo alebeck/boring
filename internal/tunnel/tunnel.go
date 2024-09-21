@@ -2,67 +2,181 @@ package tunnel
 
 import (
 	"fmt"
-	"os/exec"
+	"io"
+	"net"
+	"strings"
+	"time"
 
 	"github.com/alebeck/boring/internal/log"
+	"golang.org/x/crypto/ssh"
 )
 
-type Address struct {
-	Host string
-	Port int
-}
+type Status int
+
+const (
+	Closed Status = iota
+	Open
+	Reconnecting
+)
+
+const (
+	RECONNECT_WAIT    = 2 * time.Millisecond
+	RECONNECT_TIMEOUT = 10 * time.Minute
+)
 
 // Tunnel represents an SSH tunnel configuration and management
 type Tunnel struct {
-	Name          string    `toml:"name" json:"name"`
-	LocalAddress  string    `toml:"local" json:"local"`
-	RemoteAddress string    `toml:"remote" json:"remote"`
-	SSHServer     string    `toml:"ssh" json:"ssh"`
-	IdentityFile  string    `toml:"identity" json:"identity"`
-	Cmd           *exec.Cmd `toml:"-" json:"-"`
-	Disconnected  chan bool `toml:"-" json:"-"`
+	Name          string            `toml:"name" json:"name"`
+	LocalAddress  string            `toml:"local" json:"local"`
+	RemoteAddress string            `toml:"remote" json:"remote"`
+	Host          string            `toml:"host" json:"host"`
+	User          string            `toml:"user" json:"user"`
+	IdentityFile  string            `toml:"identity" json:"identity"`
+	Port          int               `toml:"port" json:"port"`
+	Status        Status            `toml:"-" json:"status"`
+	Closed        chan struct{}     `toml:"-" json:"-"`
+	client        *ssh.Client       `toml:"-" json:"-"`
+	clientConfig  *ssh.ClientConfig `toml:"-" json:"-"`
+	listener      net.Listener      `toml:"-" json:"-"`
+	stop          chan struct{}     `toml:"-" json:"-"`
 }
 
-// Open establishes the SSH tunnel by running the SSH command in a subprocess
 func (t *Tunnel) Open() error {
-	args := []string{"-L",
-		fmt.Sprintf("%s:%s", t.LocalAddress, t.RemoteAddress),
-		fmt.Sprintf("%s", t.SSHServer), "-N"}
+	var err error
 
-	if t.IdentityFile != "" {
-		args = append([]string{"-i", t.IdentityFile}, args...)
+	if err := t.parseSSHConf(); err != nil {
+		return fmt.Errorf("could not parse ssh config: %v", err)
 	}
 
-	t.Cmd = exec.Command("ssh", args...)
-	t.Disconnected = make(chan bool)
-
-	if err := t.Cmd.Start(); err != nil {
-		return fmt.Errorf("failed to open SSH tunnel: %w", err)
+	if err := t.validate(); err != nil {
+		return fmt.Errorf("invalid tunnel: %v", err)
 	}
 
-	log.Infof("Opened tunnel %s: %s -> %s via %s",
-		log.ColorGreen+t.Name+log.ColorReset,
-		t.LocalAddress, t.RemoteAddress, t.SSHServer)
+	if t.clientConfig == nil {
+		t.clientConfig, err = t.makeClientConf()
+		if err != nil {
+			return fmt.Errorf("could not make client config: %v", err)
+		}
+	}
 
-	go t.monitorProcess()
+	remoteAddr := fmt.Sprintf("%v:%v", t.Host, t.Port)
+	t.client, err = ssh.Dial("tcp", remoteAddr, t.clientConfig)
+	if err != nil {
+		return fmt.Errorf("could not dial remote: %v", err)
+	}
 
+	localAddr := t.LocalAddress
+	if !strings.Contains(t.LocalAddress, ":") {
+		localAddr = "localhost:" + localAddr
+	}
+	t.listener, err = net.Listen("tcp", localAddr)
+	if err != nil {
+		return fmt.Errorf("can not listen locally: %v", err)
+	}
+
+	if t.stop == nil {
+		t.stop = make(chan struct{})
+		t.Closed = make(chan struct{})
+	}
+
+	go t.watch()
+
+	go t.handleConnections()
+
+	t.Status = Open
 	return nil
+}
+
+func (t *Tunnel) watch() {
+	clientClosed := make(chan struct{})
+	go func() {
+		t.client.Wait()
+		t.listener.Close()
+		clientClosed <- struct{}{}
+	}()
+
+	select {
+	case <-clientClosed:
+		if err := t.reconnectLoop(); err != nil {
+			t.Status = Closed
+			t.Closed <- struct{}{}
+		}
+	case <-t.stop:
+		t.client.Close() // Will automatically close listener
+		t.Status = Closed
+		t.Closed <- struct{}{}
+	}
+}
+
+func (t *Tunnel) reconnectLoop() error {
+	t.Status = Reconnecting
+	timeout := time.After(RECONNECT_TIMEOUT)
+	wait := time.NewTimer(0.) // First time try immediately
+	waitTime := RECONNECT_WAIT
+
+	for {
+		select {
+		case <-timeout:
+			return fmt.Errorf("reconnect timeout")
+		case <-t.stop:
+			return fmt.Errorf("reconnect interrupted")
+		case <-wait.C:
+			log.Infof("Reconnecting tunnel %v...", t.Name)
+			err := t.Open()
+			if err == nil {
+				break
+			}
+			log.Errorf("could not reconnect tunnel %v: %v\nRetrying in %v...",
+				t.Name, err, waitTime)
+			wait.Reset(waitTime)
+			waitTime *= 2
+		}
+	}
+}
+
+func (t *Tunnel) handleConnections() {
+	defer t.listener.Close()
+	defer t.client.Close()
+
+	for {
+		local, err := t.listener.Accept()
+		if err != nil {
+			log.Errorf("could not accept: %v", err)
+			return
+		}
+
+		remote, err := t.client.Dial("tcp", t.RemoteAddress)
+		if err != nil {
+			log.Errorf("could not connect on remote: %v", err)
+			return
+		}
+
+		runTunnel(local, remote)
+	}
+}
+
+func runTunnel(local, remote net.Conn) {
+	defer local.Close()
+	defer remote.Close()
+	done := make(chan struct{}, 2)
+
+	go func() {
+		io.Copy(local, remote)
+		done <- struct{}{}
+	}()
+
+	go func() {
+		io.Copy(remote, local)
+		done <- struct{}{}
+	}()
+
+	<-done
 }
 
 func (t *Tunnel) Close() error {
-	if t.Cmd == nil || t.Cmd.Process == nil {
-		return fmt.Errorf("no running SSH tunnel to close")
+	if t.Status == Closed {
+		return fmt.Errorf("trying to close a closed tunnel")
 	}
-
-	if err := t.Cmd.Process.Kill(); err != nil {
-		return fmt.Errorf("failed to close SSH tunnel: %w", err)
-	}
-
-	log.Infof("Closed tunnel %s", log.ColorGreen+t.Name+log.ColorReset)
+	t.stop <- struct{}{}
 	return nil
-}
-
-func (t *Tunnel) monitorProcess() {
-	t.Cmd.Wait()
-	t.Disconnected <- true
 }
