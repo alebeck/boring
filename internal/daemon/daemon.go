@@ -34,8 +34,9 @@ type Command struct {
 }
 
 type Response struct {
-	Success bool   `json:"success"`
-	Error   string `json:"error"`
+	Success bool                     `json:"success"`
+	Error   string                   `json:"error"`
+	Tunnels map[string]tunnel.Tunnel `json:"tunnels"`
 }
 
 // Ensure starts the daemon if it is not already running.

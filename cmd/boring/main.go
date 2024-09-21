@@ -9,6 +9,8 @@ import (
 	"github.com/alebeck/boring/internal/daemon"
 	"github.com/alebeck/boring/internal/ipc"
 	"github.com/alebeck/boring/internal/log"
+	"github.com/alebeck/boring/internal/tunnel"
+	"github.com/rodaine/table"
 )
 
 func main() {
@@ -92,21 +94,21 @@ func controlTunnels(names []string, kind daemon.CommandKind) {
 					name, config.CONFIG_FILE_NAME)
 				return
 			}
-			cmd := daemon.Command{Kind: kind, Tunnel: *tun}
 
-			response, err := transmitCommand(cmd)
-			if err != nil {
+			var resp daemon.Response
+			cmd := daemon.Command{Kind: kind, Tunnel: *tun}
+			if err = transmitCommand(cmd, &resp); err != nil {
 				log.Errorf("Could not transmit command: %v", err)
 			}
 
-			if !response.Success {
+			if !resp.Success {
 				if kind == daemon.Open {
-					log.Errorf("Tunnel %v could not be opened: %v", name, response.Error)
+					log.Errorf("Tunnel %v could not be opened: %v", name, resp.Error)
 				} else if kind == daemon.Close {
-					log.Errorf("Tunnel %v could not be closed: %v", name, response.Error)
+					log.Errorf("Tunnel %v could not be closed: %v", name, resp.Error)
 				} else {
 					log.Errorf("Command %v could not be executed for tunnel %v: %v",
-						kind, name, response.Error)
+						kind, name, resp.Error)
 				}
 			} else {
 				if kind == daemon.Open {
@@ -128,34 +130,57 @@ func controlTunnels(names []string, kind daemon.CommandKind) {
 }
 
 func listTunnels() {
-	/*
-		conf, err := prepare()
-		if err != nil {
-			log.Fatalf(err.Error())
-		}
+	conf, err := prepare()
+	if err != nil {
+		log.Fatalf(err.Error())
+		return
+	}
 
-		cmd := daemon.Command{Kind: daemon.List, Tunnel: nil}
-	*/
+	var resp daemon.Response
+	cmd := daemon.Command{Kind: daemon.List}
+	if err = transmitCommand(cmd, &resp); err != nil {
+		log.Errorf("Could not transmit command: %v", err)
+		return
+	}
+	if !resp.Success {
+		log.Errorf("Could not list tunnels: %v", resp.Error)
+		return
+	}
+
+	tbl := table.New("Stat", "Name")
+
+	visited := make(map[string]bool)
+
+	for _, t := range conf.Tunnels {
+		if q, ok := resp.Tunnels[t.Name]; ok {
+			tbl.AddRow(q.Status, q.Name)
+			visited[q.Name] = true
+			continue
+		}
+		// TODO: case where tunnel is in resp but with different name
+		// Print t as closed, as it is not in resp
+		tbl.AddRow(tunnel.Closed, t.Name)
+	}
+
+	tbl.Print()
 }
 
-func transmitCommand(cmd daemon.Command) (daemon.Response, error) {
-	empty := daemon.Response{}
+func transmitCommand(cmd daemon.Command, resp any) error {
 	conn, err := daemon.Connect()
 	if err != nil {
-		return empty, fmt.Errorf("could not connect to daemon: %v", err)
+		return fmt.Errorf("could not connect to daemon: %v", err)
 	}
 	defer conn.Close()
 
 	if err := ipc.Send(cmd, conn); err != nil {
-		return empty, fmt.Errorf("could not send command: %v", err)
+		return fmt.Errorf("could not send command: %v", err)
 	}
 
-	var response daemon.Response
-	if err = ipc.Receive(&response, conn); err != nil {
-		return empty, fmt.Errorf("could not receive response: %v", err)
+	if err = ipc.Receive(resp, conn); err != nil {
+		return fmt.Errorf("could not receive response: %v", err)
 	}
 
-	return response, nil
+	return nil
 }
 
 func printUsage() {

@@ -8,3 +8,5 @@ require (
 	golang.org/x/crypto v0.27.0
 	golang.org/x/sys v0.25.0
 )
+
+require github.com/rodaine/table v1.3.0 // indirect

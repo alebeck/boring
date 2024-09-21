@@ -86,32 +86,36 @@ func handleConnection(conn net.Conn) {
 	}
 
 	// Execute command
-	err := error(nil)
 	switch cmd.Kind {
 	case daemon.Open:
-		err = openTunnel(cmd.Tunnel)
+		openTunnel(conn, cmd.Tunnel)
 	case daemon.Close:
-		err = closeTunnel(cmd.Tunnel)
+		closeTunnel(conn, cmd.Tunnel)
+	case daemon.List:
+		listTunnels(conn)
 	default:
-		err = fmt.Errorf("unknown command: %v", cmd.Kind)
+		unknownCmd(conn, cmd.Kind)
 	}
+}
 
-	// Serialize & send response
-	resp := daemon.Response{Success: true, Error: ""}
-	if err != nil {
-		resp = daemon.Response{Success: false, Error: err.Error()}
+func respond(conn net.Conn, err *error) {
+	resp := daemon.Response{Success: true}
+	if *err != nil {
+		resp = daemon.Response{Success: false, Error: (*err).Error()}
 	}
-
-	if err = ipc.Send(resp, conn); err != nil {
+	if err := ipc.Send(resp, conn); err != nil {
 		log.Errorf("could not send response: %v", err)
 	}
 }
 
-func openTunnel(t tunnel.Tunnel) error {
+func openTunnel(conn net.Conn, t tunnel.Tunnel) {
 	// TODO check if already running, i.e. whether its in the map
+	var err error
+	defer respond(conn, &err)
 
-	if err := t.Open(); err != nil {
-		return fmt.Errorf("could not start tunnel: %v", err)
+	if err = t.Open(); err != nil {
+		err = fmt.Errorf("could not start tunnel: %v", err)
+		return
 	}
 
 	mutex.Lock()
@@ -126,24 +130,44 @@ func openTunnel(t tunnel.Tunnel) error {
 		mutex.Unlock()
 		log.Infof("Closed tunnel %s", t.Name)
 	}()
-
-	return nil
 }
 
-func closeTunnel(q tunnel.Tunnel) error {
+func closeTunnel(conn net.Conn, q tunnel.Tunnel) {
+	var err error
+	defer respond(conn, &err)
+
 	mutex.RLock()
 	t, ok := tunnels[q.Name]
 	mutex.RUnlock()
 	if !ok {
-		return fmt.Errorf("tunnel not running")
+		err = fmt.Errorf("tunnel not running")
+		return
 	}
 
-	if err := t.Close(); err != nil {
-		return fmt.Errorf("could not close tunnel: %v", err)
+	if err = t.Close(); err != nil {
+		err = fmt.Errorf("could not close tunnel: %v", err)
+		return
 	}
 	mutex.Lock()
 	delete(tunnels, t.Name)
 	mutex.Unlock()
+}
 
-	return nil
+func listTunnels(conn net.Conn) {
+	m := make(map[string]tunnel.Tunnel)
+	mutex.RLock()
+	for n, t := range tunnels {
+		m[n] = *t
+	}
+	mutex.RUnlock()
+
+	resp := daemon.Response{Success: true, Tunnels: m}
+	if err := ipc.Send(resp, conn); err != nil {
+		log.Errorf("could not send response: %v", err)
+	}
+}
+
+func unknownCmd(conn net.Conn, k daemon.CommandKind) {
+	err := fmt.Errorf("unknown command: %v", k)
+	respond(conn, &err)
 }
