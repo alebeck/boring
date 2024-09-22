@@ -16,7 +16,7 @@ func (t *Tunnel) parseSSHConf() error {
 	// TODO check /etc/ssh/ssh_config if user one does not exist
 	sshConfFile, err := os.Open(sshConfigPath("config"))
 	if err != nil {
-		return err // TODO
+		return nil
 	}
 	sshConf, err := ssh_config.Decode(sshConfFile)
 	if err != nil {
@@ -39,13 +39,16 @@ func (t *Tunnel) parseSSHConf() error {
 		}
 	}
 	if hostName, _ := sshConf.Get(t.Host, "HostName"); hostName != "" {
-		t.Host = hostName
+		t.HostName = hostName
 	}
 
 	return nil
 }
 
 func (t *Tunnel) validate() error {
+	if t.Host == "" && t.HostName == "" {
+		return fmt.Errorf("no host specified.")
+	}
 	if t.IdentityFile == "" {
 		return fmt.Errorf("no identity file specified.")
 	}

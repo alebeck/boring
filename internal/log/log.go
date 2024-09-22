@@ -17,6 +17,7 @@ const (
 )
 
 var logFile io.Writer = os.Stdout
+var debug = len(os.Getenv("DEBUG")) > 0
 
 func timestamp() string {
 	currentTime := time.Now()
@@ -25,6 +26,9 @@ func timestamp() string {
 }
 
 func Debugf(format string, a ...any) {
+	if !debug {
+		return
+	}
 	message := fmt.Sprintf(format, a...)
 	fmt.Fprintf(logFile, "%s DEBUG %s\n", timestamp(), message)
 }

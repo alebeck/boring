@@ -19,6 +19,19 @@ const (
 	Reconnecting
 )
 
+func (s Status) String() string {
+	switch s {
+	case Closed:
+		return log.ColorRed + "Closed" + log.ColorReset
+	case Open:
+		return log.ColorGreen + "Open" + log.ColorReset
+	case Reconnecting:
+		return log.ColorYellow + "Reconn." + log.ColorReset
+	default:
+		return fmt.Sprintf("%d", int(s))
+	}
+}
+
 const (
 	RECONNECT_WAIT    = 2 * time.Millisecond
 	RECONNECT_TIMEOUT = 10 * time.Minute
@@ -30,6 +43,7 @@ type Tunnel struct {
 	LocalAddress  string            `toml:"local" json:"local"`
 	RemoteAddress string            `toml:"remote" json:"remote"`
 	Host          string            `toml:"host" json:"host"`
+	HostName      string            `toml:"-" json:"hostname"`
 	User          string            `toml:"user" json:"user"`
 	IdentityFile  string            `toml:"identity" json:"identity"`
 	Port          int               `toml:"port" json:"port"`
@@ -59,7 +73,11 @@ func (t *Tunnel) Open() error {
 		}
 	}
 
-	remoteAddr := fmt.Sprintf("%v:%v", t.Host, t.Port)
+	remoteHost := t.HostName
+	if remoteHost == "" {
+		remoteHost = t.Host
+	}
+	remoteAddr := fmt.Sprintf("%v:%v", remoteHost, t.Port)
 	t.client, err = ssh.Dial("tcp", remoteAddr, t.clientConfig)
 	if err != nil {
 		return fmt.Errorf("could not dial remote: %v", err)
@@ -127,7 +145,7 @@ func (t *Tunnel) reconnectLoop() error {
 			log.Infof("Reconnecting tunnel %v...", t.Name)
 			err := t.Open()
 			if err == nil {
-				break
+				return nil
 			}
 			log.Errorf("could not reconnect tunnel %v: %v\nRetrying in %v...",
 				t.Name, err, waitTime)

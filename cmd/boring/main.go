@@ -9,8 +9,8 @@ import (
 	"github.com/alebeck/boring/internal/daemon"
 	"github.com/alebeck/boring/internal/ipc"
 	"github.com/alebeck/boring/internal/log"
+	"github.com/alebeck/boring/internal/table"
 	"github.com/alebeck/boring/internal/tunnel"
-	"github.com/rodaine/table"
 )
 
 func main() {
@@ -147,19 +147,19 @@ func listTunnels() {
 		return
 	}
 
-	tbl := table.New("Stat", "Name")
+	tbl := table.New("Status", "Name", "Local", "Remote", "Via")
 
 	visited := make(map[string]bool)
 
 	for _, t := range conf.Tunnels {
 		if q, ok := resp.Tunnels[t.Name]; ok {
-			tbl.AddRow(q.Status, q.Name)
+			tbl.AddRow(q.Status, q.Name, q.LocalAddress, q.RemoteAddress, q.Host)
 			visited[q.Name] = true
 			continue
 		}
 		// TODO: case where tunnel is in resp but with different name
 		// Print t as closed, as it is not in resp
-		tbl.AddRow(tunnel.Closed, t.Name)
+		tbl.AddRow(tunnel.Closed, t.Name, t.LocalAddress, t.RemoteAddress, t.Host)
 	}
 
 	tbl.Print()
