@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"os/user"
+	"os"
 	"path/filepath"
 
 	"github.com/BurntSushi/toml"
@@ -17,23 +17,23 @@ type Config struct {
 	TunnelsMap map[string]*tunnel.Tunnel `toml:"-"`
 }
 
-// LoadConfig reads the configuration file from the user's home directory
+// LoadConfig parses the boring configuration file
 func LoadConfig() (*Config, error) {
 	var config Config
-	user, err := user.Current()
-	if err != nil {
-		return nil, fmt.Errorf("could not get current user: %v", err)
-	}
-	confPath := filepath.Join(user.HomeDir, CONFIG_FILE_NAME)
+	confPath := filepath.Join(os.Getenv("HOME"), CONFIG_FILE_NAME)
 	if _, err := toml.DecodeFile(confPath, &config); err != nil {
 		return nil, fmt.Errorf("could not decode config file: %v", err)
 	}
 
 	// Create a map of tunnel names to tunnel instances for easy lookup
-	config.TunnelsMap = make(map[string]*tunnel.Tunnel)
+	m := make(map[string]*tunnel.Tunnel)
 	for _, t := range config.Tunnels {
-		config.TunnelsMap[t.Name] = &t
+		if _, exists := m[t.Name]; exists {
+			return nil, fmt.Errorf("found duplicated tunnel name '%v'", t.Name)
+		}
+		m[t.Name] = &t
 	}
 
+	config.TunnelsMap = m
 	return &config, nil
 }

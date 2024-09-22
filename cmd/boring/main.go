@@ -160,7 +160,6 @@ func listTunnels() {
 			continue
 		}
 		// TODO: case where tunnel is in resp but with different name
-		// Print t as closed, as it is not in resp
 		tbl.AddRow(tunnel.Closed, t.Name, t.LocalAddress, t.RemoteAddress, t.Host)
 	}
 
