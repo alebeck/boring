@@ -46,9 +46,9 @@ func (t *Tunnel) Open() error {
 		return fmt.Errorf("could not dial remote: %v", err)
 	}
 
-	t.listener, err = net.Listen("tcp", t.rc.localAddress)
+	t.listener, err = net.Listen(t.rc.localNet, t.rc.localAddress)
 	if err != nil {
-		return fmt.Errorf("can not listen locally: %v", err)
+		return fmt.Errorf("can not listen: %v", err)
 	}
 
 	if t.stop == nil {
@@ -64,8 +64,48 @@ func (t *Tunnel) Open() error {
 	return nil
 }
 
+func (t *Tunnel) handleConnections() {
+	defer t.listener.Close()
+	defer t.client.Close()
+
+	// Only handle one connection at a time
+	for {
+		local, err := t.listener.Accept()
+		if err != nil {
+			log.Errorf("could not accept: %v", err)
+			return
+		}
+
+		remote, err := t.client.Dial(t.rc.remoteNet, t.rc.remoteAddress)
+		if err != nil {
+			log.Errorf("could not connect on remote: %v", err)
+			return
+		}
+
+		runTunnel(local, remote)
+	}
+}
+
+func runTunnel(local, remote net.Conn) {
+	defer local.Close()
+	defer remote.Close()
+	done := make(chan struct{}, 2)
+
+	go func() {
+		io.Copy(local, remote)
+		done <- struct{}{}
+	}()
+
+	go func() {
+		io.Copy(remote, local)
+		done <- struct{}{}
+	}()
+
+	<-done
+}
+
 func (t *Tunnel) watch() {
-	clientClosed := make(chan struct{})
+	clientClosed := make(chan struct{}, 1)
 	go func() {
 		t.client.Wait()
 		t.listener.Close()
@@ -110,45 +150,6 @@ func (t *Tunnel) reconnectLoop() error {
 			waitTime *= 2
 		}
 	}
-}
-
-func (t *Tunnel) handleConnections() {
-	defer t.listener.Close()
-	defer t.client.Close()
-
-	for {
-		local, err := t.listener.Accept()
-		if err != nil {
-			log.Errorf("could not accept: %v", err)
-			return
-		}
-
-		remote, err := t.client.Dial("tcp", t.RemoteAddress)
-		if err != nil {
-			log.Errorf("could not connect on remote: %v", err)
-			return
-		}
-
-		runTunnel(local, remote)
-	}
-}
-
-func runTunnel(local, remote net.Conn) {
-	defer local.Close()
-	defer remote.Close()
-	done := make(chan struct{}, 2)
-
-	go func() {
-		io.Copy(local, remote)
-		done <- struct{}{}
-	}()
-
-	go func() {
-		io.Copy(remote, local)
-		done <- struct{}{}
-	}()
-
-	<-done
 }
 
 func (t *Tunnel) Close() error {

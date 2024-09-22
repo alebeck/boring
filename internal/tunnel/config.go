@@ -26,6 +26,8 @@ var defaultKeys = []string{"~/.ssh/id_rsa", "~/.ssh/id_ecdsa", "~/.ssh/id_ed2551
 type runConfig struct {
 	localAddress  string
 	remoteAddress string
+	localNet      string // tcp, unix
+	remoteNet     string // tcp, unix
 	hostName      string
 	user          string
 	port          int
@@ -73,8 +75,11 @@ func (t *Tunnel) makeRunConfig() error {
 	}
 
 	rc.remoteAddress = t.RemoteAddress
+	rc.remoteNet = netType(rc.remoteAddress)
+
 	rc.localAddress = t.LocalAddress
-	if !strings.Contains(t.LocalAddress, ":") {
+	rc.localNet = netType(rc.localAddress)
+	if rc.localNet == "tcp" && !strings.Contains(rc.localAddress, ":") {
 		rc.localAddress = "localhost:" + rc.localAddress
 	}
 
@@ -200,4 +205,15 @@ func fillHome(path string) string {
 		return filepath.Join(home, path[2:])
 	}
 	return path
+}
+
+func netType(addr string) string {
+	if strings.Contains(addr, ":") {
+		return "tcp"
+	}
+	if _, err := strconv.Atoi(addr); err == nil {
+		// It's a port
+		return "tcp"
+	}
+	return "unix"
 }
