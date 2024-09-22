@@ -126,7 +126,7 @@ func (t *Tunnel) reconnectLoop() error {
 			if err == nil {
 				return nil
 			}
-			log.Errorf("could not reconnect tunnel %v: %v\nRetrying in %v...",
+			log.Errorf("could not reconnect tunnel %v: %v. Retrying in %v...",
 				t.Name, err, waitTime)
 			wait.Reset(waitTime)
 			waitTime *= 2

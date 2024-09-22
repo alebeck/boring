@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kevinburke/ssh_config"
 	"golang.org/x/crypto/ssh"
@@ -13,6 +14,7 @@ import (
 )
 
 const sshPort = 22
+const sshConnTimeout = 10 * time.Second
 
 type RunConfig struct {
 	localAddress  string
@@ -129,15 +131,15 @@ func makeClientConfig(user, identityFile string) (*ssh.ClientConfig, error) {
 	}
 
 	// TODO: timeout
-	conf := &ssh.ClientConfig{
+	conf := ssh.ClientConfig{
 		User: user,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signer),
 		},
-		HostKeyCallback:   knownHostsCallback,
-		HostKeyAlgorithms: []string{ssh.KeyAlgoED25519},
+		HostKeyCallback: knownHostsCallback,
+		Timeout:         sshConnTimeout,
 	}
-	return conf, nil
+	return &conf, nil
 }
 
 func sshConfigPath(filename string) string {
