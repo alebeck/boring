@@ -18,6 +18,7 @@ import (
 
 var tunnels = make(map[string]*tunnel.Tunnel)
 var mutex sync.RWMutex
+var listener net.Listener
 
 func main() {
 	if len(os.Args) < 3 {
@@ -27,41 +28,49 @@ func main() {
 	initLogger(os.Args[2])
 	log.Infof("Daemon starting with args: %v", os.Args[1:])
 
-	l, err := setupListener()
-	if err != nil {
+	var err error
+	if listener, err = setupListener(); err != nil {
 		log.Fatalf("Failed to setup listener: %v", err)
 	}
-	defer l.Close()
-	go handleCleanup(l)
 
-	// Start handling incoming connections
+	defer cleanup()
+	go watchSignal()
+
+	// Handle incoming connections
 	for {
-		conn, err := l.Accept()
+		conn, err := listener.Accept()
 		if err != nil {
 			log.Errorf("Failed to accept connection: %v", err)
-			continue
+			if errors.Is(err, net.ErrClosed) {
+				return
+			}
 		}
 		go handleConnection(conn)
 	}
+}
+
+func watchSignal() {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
+	log.Infof("Received signal: %s. Closing.", <-sig)
+	listener.Close()
+	log.Infof("Closed listener.")
 }
 
 // Logic for socket cleanup on TERM/INT signal. On
 // SIGKILL and other abrupt interruptions, the socket
 // file is likely not cleaned up, and has to be deleted
 // manually. TODO: Detect & fix this state in the CLI.
-func handleCleanup(l net.Listener) {
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
-	log.Infof("Received signal: %s. Cleaning up...", <-sig)
-
-	l.Close()
-
+func cleanup() {
+	log.Infof("Cleaning up.")
+	listener.Close()
 	mutex.Lock()
 	for _, t := range tunnels {
 		t.Close()
 	}
-
-	os.Exit(0)
+	for _, t := range tunnels {
+		<-t.Closed
+	}
 }
 
 func initLogger(path string) {

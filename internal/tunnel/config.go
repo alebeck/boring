@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"github.com/alebeck/boring/internal/log"
 	"github.com/kevinburke/ssh_config"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
@@ -120,23 +122,30 @@ func validate(rc *runConfig) error {
 
 func makeClientConfig(user, identityFile string) (*ssh.ClientConfig, error) {
 	var signers []ssh.Signer
-	identityFiles := append([]string{identityFile}, defaultKeys...)
 
-	for _, i := range identityFiles {
-		key, err := os.ReadFile(fillHome(i))
-		if err != nil {
-			continue
+	signer, err := loadKey(identityFile)
+	if err == nil {
+		signers = append(signers, *signer)
+	} else {
+		log.Warningf("no identity file: %v, trying default ones", err)
+		for _, k := range defaultKeys {
+			signer, err := loadKey(k)
+			if err != nil {
+				log.Warningf("Unable to parse private key %v: %v", k, err)
+				continue
+			}
+			signers = append(signers, *signer)
 		}
-		signer, err := ssh.ParsePrivateKey(key)
+		// Here, we will also add potential keys exposed by ssh-agent
+		agentSigners, err := getAgentSigners()
 		if err != nil {
-			log.Warningf("Unable to parse private key %v: %v", i, err)
-			continue
+			log.Warningf("Unable to get keys from ssh-agent: %v", err)
 		}
-		signers = append(signers, signer)
-	}
+		signers = append(signers, agentSigners...)
 
-	if len(signers) == 0 {
-		return nil, fmt.Errorf("no key files found.")
+		if len(signers) == 0 {
+			return nil, fmt.Errorf("no key files found.")
+		}
 	}
 
 	knownHostsCallback, err := knownhosts.New(sshConfigPath("known_hosts"))
@@ -153,6 +162,30 @@ func makeClientConfig(user, identityFile string) (*ssh.ClientConfig, error) {
 		Timeout:         sshConnTimeout,
 	}
 	return &conf, nil
+}
+
+func loadKey(path string) (*ssh.Signer, error) {
+	if path == "" {
+		return nil, fmt.Errorf("no key specified")
+	}
+	key, err := os.ReadFile(fillHome(path))
+	if err != nil {
+		return nil, fmt.Errorf("could not read key: %v", err)
+	}
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse key: %v", err)
+	}
+	return &signer, nil
+}
+
+func getAgentSigners() ([]ssh.Signer, error) {
+	sock, err := net.Dial("unix", os.Getenv("SSH_AUTH_SOCK"))
+	if err != nil {
+		return nil, fmt.Errorf("could not dial agent: %v", err)
+	}
+	c := agent.NewClient(sock)
+	return c.Signers()
 }
 
 func sshConfigPath(filename string) string {

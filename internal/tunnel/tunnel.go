@@ -68,7 +68,6 @@ func (t *Tunnel) watch() {
 	clientClosed := make(chan struct{})
 	go func() {
 		t.client.Wait()
-		log.Infof("Detected client closure for %v...", t.Name)
 		t.listener.Close()
 		clientClosed <- struct{}{}
 	}()
