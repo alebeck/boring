@@ -12,7 +12,68 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
-func (t *Tunnel) parseSSHConf() error {
+const sshPort = 22
+
+type RunConfig struct {
+	localAddress  string
+	remoteAddress string
+	hostName      string
+	user          string
+	port          int
+	identityFile  string
+	clientConfig  *ssh.ClientConfig
+}
+
+func (t *Tunnel) makeRunConfig() error {
+	rc := RunConfig{}
+
+	// Fill in rc's values based on ssh config
+	if err := parseSSHConf(t.Host, &rc); err != nil {
+		return fmt.Errorf("could not parse SSH config: %v", err)
+	}
+
+	// Override values which were manually set by user
+	if t.User != "" {
+		rc.user = t.User
+	}
+	if t.Port != 0 {
+		rc.port = t.Port
+	}
+	if t.IdentityFile != "" {
+		rc.identityFile = t.IdentityFile
+	}
+
+	// If port is still not set, use default
+	if rc.port == 0 {
+		rc.port = sshPort
+	}
+
+	// If t.Host could not be resolved from ssh config, take it literally
+	if rc.hostName == "" {
+		rc.hostName = t.Host
+	}
+
+	if err := validate(&rc); err != nil {
+		return err
+	}
+
+	// Make SSH client config
+	var err error
+	if rc.clientConfig, err = makeClientConfig(rc.user, rc.identityFile); err != nil {
+		return fmt.Errorf("could not make client config: %v", err)
+	}
+
+	rc.remoteAddress = t.RemoteAddress
+	rc.localAddress = t.LocalAddress
+	if !strings.Contains(t.LocalAddress, ":") {
+		rc.localAddress = "localhost:" + rc.localAddress
+	}
+
+	t.rc = &rc
+	return nil
+}
+
+func parseSSHConf(alias string, rc *RunConfig) error {
 	// TODO check /etc/ssh/ssh_config if user one does not exist
 	sshConfFile, err := os.Open(sshConfigPath("config"))
 	if err != nil {
@@ -20,50 +81,41 @@ func (t *Tunnel) parseSSHConf() error {
 	}
 	sshConf, err := ssh_config.Decode(sshConfFile)
 	if err != nil {
-		return err // TODO
+		return fmt.Errorf("could not decode ssh config: %v", err)
 	}
 	sshConfFile.Close()
 
 	// TODO: allow multiple key files
-	if t.IdentityFile == "" {
-		t.IdentityFile, _ = sshConf.Get(t.Host, "IdentityFile")
-	}
-	if t.User == "" {
-		t.User, _ = sshConf.Get(t.Host, "User")
-	}
-	if t.Port == 0 {
-		port, _ := sshConf.Get(t.Host, "Port")
-		if t.Port, _ = strconv.Atoi(port); t.Port == 0 {
-			// Use SSH standard port
-			t.Port = 22
-		}
-	}
-	if hostName, _ := sshConf.Get(t.Host, "HostName"); hostName != "" {
-		t.HostName = hostName
-	}
+	rc.identityFile, _ = sshConf.Get(alias, "IdentityFile")
+
+	rc.user, _ = sshConf.Get(alias, "User")
+
+	port, _ := sshConf.Get(alias, "Port")
+	rc.port, _ = strconv.Atoi(port)
+
+	rc.hostName, _ = sshConf.Get(alias, "HostName")
 
 	return nil
 }
 
-func (t *Tunnel) validate() error {
-	if t.Host == "" && t.HostName == "" {
+func validate(rc *RunConfig) error {
+	if rc.hostName == "" {
 		return fmt.Errorf("no host specified.")
 	}
-	if t.IdentityFile == "" {
+	if rc.identityFile == "" {
 		return fmt.Errorf("no identity file specified.")
 	}
-	if t.User == "" {
+	if rc.user == "" {
 		return fmt.Errorf("no user specified.")
 	}
-	if t.Port == 0 {
+	if rc.port == 0 {
 		return fmt.Errorf("no port specified.")
 	}
 	return nil
 }
 
-func (t *Tunnel) makeClientConf() (*ssh.ClientConfig, error) {
-	// Private key file and known hosts
-	key, err := os.ReadFile(fillHome(t.IdentityFile))
+func makeClientConfig(user, identityFile string) (*ssh.ClientConfig, error) {
+	key, err := os.ReadFile(fillHome(identityFile))
 	if err != nil {
 		return nil, fmt.Errorf("unable to read private key: %v", err)
 	}
@@ -78,7 +130,7 @@ func (t *Tunnel) makeClientConf() (*ssh.ClientConfig, error) {
 
 	// TODO: timeout
 	conf := &ssh.ClientConfig{
-		User: t.User,
+		User: user,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signer),
 		},

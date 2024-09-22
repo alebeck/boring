@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/alebeck/boring/internal/log"
@@ -39,55 +38,36 @@ const (
 
 // Tunnel represents an SSH tunnel configuration and management
 type Tunnel struct {
-	Name          string            `toml:"name" json:"name"`
-	LocalAddress  string            `toml:"local" json:"local"`
-	RemoteAddress string            `toml:"remote" json:"remote"`
-	Host          string            `toml:"host" json:"host"`
-	HostName      string            `toml:"-" json:"hostname"`
-	User          string            `toml:"user" json:"user"`
-	IdentityFile  string            `toml:"identity" json:"identity"`
-	Port          int               `toml:"port" json:"port"`
-	Status        Status            `toml:"-" json:"status"`
-	Closed        chan struct{}     `toml:"-" json:"-"`
-	client        *ssh.Client       `toml:"-" json:"-"`
-	clientConfig  *ssh.ClientConfig `toml:"-" json:"-"`
-	listener      net.Listener      `toml:"-" json:"-"`
-	stop          chan struct{}     `toml:"-" json:"-"`
+	Name          string        `toml:"name" json:"name"`
+	LocalAddress  string        `toml:"local" json:"local"`
+	RemoteAddress string        `toml:"remote" json:"remote"`
+	Host          string        `toml:"host" json:"host"`
+	User          string        `toml:"user" json:"user"`
+	IdentityFile  string        `toml:"identity" json:"identity"`
+	Port          int           `toml:"port" json:"port"`
+	Status        Status        `toml:"-" json:"status"`
+	Closed        chan struct{} `toml:"-" json:"-"`
+	rc            *RunConfig    `toml:"-" json:"-"`
+	client        *ssh.Client   `toml:"-" json:"-"`
+	listener      net.Listener  `toml:"-" json:"-"`
+	stop          chan struct{} `toml:"-" json:"-"`
 }
 
 func (t *Tunnel) Open() error {
 	var err error
-
-	if err := t.parseSSHConf(); err != nil {
-		return fmt.Errorf("could not parse ssh config: %v", err)
-	}
-
-	if err := t.validate(); err != nil {
-		return fmt.Errorf("invalid tunnel: %v", err)
-	}
-
-	if t.clientConfig == nil {
-		t.clientConfig, err = t.makeClientConf()
-		if err != nil {
-			return fmt.Errorf("could not make client config: %v", err)
+	if t.rc == nil {
+		if err := t.makeRunConfig(); err != nil {
+			return fmt.Errorf("could not make run config: %v", err)
 		}
 	}
 
-	remoteHost := t.HostName
-	if remoteHost == "" {
-		remoteHost = t.Host
-	}
-	remoteAddr := fmt.Sprintf("%v:%v", remoteHost, t.Port)
-	t.client, err = ssh.Dial("tcp", remoteAddr, t.clientConfig)
+	addr := fmt.Sprintf("%v:%v", t.rc.hostName, t.rc.port)
+	t.client, err = ssh.Dial("tcp", addr, t.rc.clientConfig)
 	if err != nil {
 		return fmt.Errorf("could not dial remote: %v", err)
 	}
 
-	localAddr := t.LocalAddress
-	if !strings.Contains(t.LocalAddress, ":") {
-		localAddr = "localhost:" + localAddr
-	}
-	t.listener, err = net.Listen("tcp", localAddr)
+	t.listener, err = net.Listen("tcp", t.rc.localAddress)
 	if err != nil {
 		return fmt.Errorf("can not listen locally: %v", err)
 	}
@@ -98,7 +78,6 @@ func (t *Tunnel) Open() error {
 	}
 
 	go t.watch()
-
 	go t.handleConnections()
 
 	log.Infof("Opened tunnel %v...", t.Name)
