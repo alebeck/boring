@@ -114,7 +114,6 @@ func openTunnel(conn net.Conn, t tunnel.Tunnel) {
 	defer respond(conn, &err)
 
 	if err = t.Open(); err != nil {
-		err = fmt.Errorf("could not start tunnel: %v", err)
 		return
 	}
 

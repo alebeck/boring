@@ -81,51 +81,53 @@ func controlTunnels(names []string, kind daemon.CommandKind) {
 	// Remove potential duplicates from names list
 	names = slices.Compact(slices.Sorted(slices.Values(names)))
 
+	// Issue concurrent commands for all tunnels
 	done := make(chan bool, len(names))
-
-	// Issue concurrent start commands for all tunnels
 	for _, name := range names {
 		go func() {
-			defer func() { done <- true }()
-
-			tun, ok := conf.TunnelsMap[name]
-			if !ok {
-				log.Errorf("Tunnel '%s' not found in configuration (%s).",
-					name, config.CONFIG_FILE_NAME)
-				return
-			}
-
-			var resp daemon.Response
-			cmd := daemon.Command{Kind: kind, Tunnel: *tun}
-			if err = transmitCommand(cmd, &resp); err != nil {
-				log.Errorf("Could not transmit command: %v", err)
-			}
-
-			if !resp.Success {
-				if kind == daemon.Open {
-					log.Errorf("Tunnel %v could not be opened: %v", name, resp.Error)
-				} else if kind == daemon.Close {
-					log.Errorf("Tunnel %v could not be closed: %v", name, resp.Error)
-				} else {
-					log.Errorf("Command %v could not be executed for tunnel %v: %v",
-						kind, name, resp.Error)
-				}
-			} else {
-				if kind == daemon.Open {
-					log.Infof("Opened tunnel %s: %s -> %s via %s",
-						log.ColorGreen+tun.Name+log.ColorReset,
-						tun.LocalAddress, tun.RemoteAddress, tun.Host)
-				} else if kind == daemon.Close {
-					log.Infof("Closed tunnel %s", log.ColorGreen+tun.Name+log.ColorReset)
-				} else {
-					log.Infof("Executed command %v for tunnel %s", kind, tun.Name)
-				}
-			}
+			controlTunnel(name, kind, conf)
+			done <- true
 		}()
 	}
 
 	for _ = range names {
 		<-done
+	}
+}
+
+func controlTunnel(name string, kind daemon.CommandKind, conf *config.Config) {
+	tun, ok := conf.TunnelsMap[name]
+	if !ok {
+		log.Errorf("Tunnel '%s' not found in configuration (%s).",
+			name, config.CONFIG_FILE_NAME)
+		return
+	}
+
+	var resp daemon.Response
+	cmd := daemon.Command{Kind: kind, Tunnel: *tun}
+	if err := transmitCommand(cmd, &resp); err != nil {
+		log.Errorf("Could not transmit command: %v", err)
+	}
+
+	if !resp.Success {
+		if kind == daemon.Open {
+			log.Errorf("Tunnel %v could not be opened: %v", name, resp.Error)
+		} else if kind == daemon.Close {
+			log.Errorf("Tunnel %v could not be closed: %v", name, resp.Error)
+		} else {
+			log.Errorf("Command %v could not be executed for tunnel %v: %v",
+				kind, name, resp.Error)
+		}
+	} else {
+		if kind == daemon.Open {
+			log.Infof("Opened tunnel %s: %s -> %s via %s",
+				log.ColorGreen+tun.Name+log.ColorReset,
+				tun.LocalAddress, tun.RemoteAddress, tun.Host)
+		} else if kind == daemon.Close {
+			log.Infof("Closed tunnel %s", log.ColorGreen+tun.Name+log.ColorReset)
+		} else {
+			log.Infof("Executed command %v for tunnel %s", kind, tun.Name)
+		}
 	}
 }
 
@@ -185,7 +187,7 @@ func transmitCommand(cmd daemon.Command, resp any) error {
 
 func printUsage() {
 	fmt.Println("Usage:")
-	fmt.Println("  boring list,l						List tunnels")
+	fmt.Println("  boring list,l                        List tunnels")
 	fmt.Println("  boring open,o <name1> [<name2> ...]  Open specified tunnel(s)")
 	fmt.Println("  boring close,c <name1> [<name2> ...] Close specified tunnel(s)")
 }
