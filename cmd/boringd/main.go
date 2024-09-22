@@ -25,7 +25,7 @@ func main() {
 		log.Fatalf("Daemon called with args: %v", os.Args[1:])
 	}
 
-	initLogger(os.Args[2])
+	setupLogger(os.Args[2])
 	log.Infof("Daemon starting with args: %v", os.Args[1:])
 
 	var err error
@@ -73,7 +73,7 @@ func cleanup() {
 	}
 }
 
-func initLogger(path string) {
+func setupLogger(path string) {
 	logFile, err := os.OpenFile(path,
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {

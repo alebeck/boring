@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"syscall"
 	"time"
 )
 
@@ -16,8 +17,38 @@ const (
 	ColorBlue   = "\033[36m"
 )
 
+const maxFileSize = 128 * 1024 // 128 KiB
+
 var logFile io.Writer = os.Stdout
 var debug = len(os.Getenv("DEBUG")) > 0
+
+type logWriter struct {
+	writer io.Writer
+}
+
+func (w logWriter) Write(bytes []byte) (int, error) {
+	w.tryRotate()
+	return w.writer.Write(bytes)
+}
+
+func (w logWriter) tryRotate() bool {
+	f, ok := w.writer.(*os.File)
+	if !ok {
+		// Not a file, can't rotate
+		return false
+	}
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	if info.Size() < maxFileSize {
+		// Not ripe for rotation
+		return false
+	}
+	syscall.Ftruncate(int(f.Fd()), 0)
+	f.Seek(0, 0)
+	return true
+}
 
 func timestamp() string {
 	currentTime := time.Now()
@@ -55,5 +86,5 @@ func Fatalf(format string, a ...any) {
 }
 
 func SetOutput(writer io.Writer) {
-	logFile = writer
+	logFile = logWriter{writer: writer}
 }
