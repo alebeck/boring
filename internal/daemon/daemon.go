@@ -28,6 +28,21 @@ const (
 	List
 )
 
+var commandKindNames = map[CommandKind]string{
+	Nop:   "Nop",
+	Open:  "Open",
+	Close: "Close",
+	List:  "List",
+}
+
+func (k CommandKind) String() string {
+	n, ok := commandKindNames[k]
+	if !ok {
+		return fmt.Sprintf("%d", int(k))
+	}
+	return n
+}
+
 type Command struct {
 	Kind   CommandKind   `json:"kind"`
 	Tunnel tunnel.Tunnel `json:"tunnel,omitempty"`

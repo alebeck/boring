@@ -10,27 +10,6 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-type Status int
-
-const (
-	Closed Status = iota
-	Open
-	Reconnecting
-)
-
-func (s Status) String() string {
-	switch s {
-	case Closed:
-		return log.ColorRed + "Closed" + log.ColorReset
-	case Open:
-		return log.ColorGreen + "Open" + log.ColorReset
-	case Reconnecting:
-		return log.ColorYellow + "Reconn." + log.ColorReset
-	default:
-		return fmt.Sprintf("%d", int(s))
-	}
-}
-
 const (
 	RECONNECT_WAIT    = 2 * time.Millisecond
 	RECONNECT_TIMEOUT = 10 * time.Minute
@@ -109,7 +88,7 @@ func (t *Tunnel) watch() {
 }
 
 func (t *Tunnel) reconnectLoop() error {
-	t.Status = Reconnecting
+	t.Status = Reconn
 	timeout := time.After(RECONNECT_TIMEOUT)
 	wait := time.NewTimer(0.) // First time try immediately
 	waitTime := RECONNECT_WAIT

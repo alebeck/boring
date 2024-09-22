@@ -28,12 +28,12 @@ func Receive(s any, conn net.Conn) error {
 	reader := bufio.NewReader(conn)
 	data, err := reader.ReadBytes('\n')
 	if err != nil {
-		return fmt.Errorf("failed to read from connection: %v", err)
+		return fmt.Errorf("failed to read from connection: %w", err)
 	}
 
 	err = json.Unmarshal(data, s)
 	if err != nil {
-		return fmt.Errorf("failed to deserialize command: %v", err)
+		return fmt.Errorf("failed to deserialize command: %w", err)
 	}
 	log.Debugf("Received object: %v", s)
 	return nil

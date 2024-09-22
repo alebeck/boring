@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -81,9 +83,13 @@ func handleConnection(conn net.Conn) {
 	// Receive command
 	var cmd daemon.Command
 	if err := ipc.Receive(&cmd, conn); err != nil {
-		log.Errorf("Could not receive command: %v", err)
+		// Ignore cases where client aborts connection
+		if !errors.Is(err, io.EOF) {
+			log.Errorf("Could not receive command: %v", err)
+		}
 		return
 	}
+	log.Infof("Received command %v", cmd)
 
 	// Execute command
 	switch cmd.Kind {
