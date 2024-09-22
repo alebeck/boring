@@ -8,15 +8,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alebeck/boring/internal/log"
 	"github.com/kevinburke/ssh_config"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
-const sshPort = 22
-const sshConnTimeout = 10 * time.Second
+const (
+	sshPort        = 22
+	sshConnTimeout = 10 * time.Second
+)
 
-type RunConfig struct {
+var defaultKeys = []string{"~/.ssh/id_rsa", "~/.ssh/id_ecdsa", "~/.ssh/id_ed25519"}
+
+type runConfig struct {
 	localAddress  string
 	remoteAddress string
 	hostName      string
@@ -27,7 +32,7 @@ type RunConfig struct {
 }
 
 func (t *Tunnel) makeRunConfig() error {
-	rc := RunConfig{}
+	rc := runConfig{}
 
 	// Fill in rc's values based on ssh config
 	if err := parseSSHConf(t.Host, &rc); err != nil {
@@ -75,7 +80,7 @@ func (t *Tunnel) makeRunConfig() error {
 	return nil
 }
 
-func parseSSHConf(alias string, rc *RunConfig) error {
+func parseSSHConf(alias string, rc *runConfig) error {
 	// TODO check /etc/ssh/ssh_config if user one does not exist
 	sshConfFile, err := os.Open(sshConfigPath("config"))
 	if err != nil {
@@ -100,12 +105,9 @@ func parseSSHConf(alias string, rc *RunConfig) error {
 	return nil
 }
 
-func validate(rc *RunConfig) error {
+func validate(rc *runConfig) error {
 	if rc.hostName == "" {
 		return fmt.Errorf("no host specified.")
-	}
-	if rc.identityFile == "" {
-		return fmt.Errorf("no identity file specified.")
 	}
 	if rc.user == "" {
 		return fmt.Errorf("no user specified.")
@@ -117,24 +119,35 @@ func validate(rc *RunConfig) error {
 }
 
 func makeClientConfig(user, identityFile string) (*ssh.ClientConfig, error) {
-	key, err := os.ReadFile(fillHome(identityFile))
-	if err != nil {
-		return nil, fmt.Errorf("unable to read private key: %v", err)
+	var signers []ssh.Signer
+	identityFiles := append([]string{identityFile}, defaultKeys...)
+
+	for _, i := range identityFiles {
+		key, err := os.ReadFile(fillHome(i))
+		if err != nil {
+			continue
+		}
+		signer, err := ssh.ParsePrivateKey(key)
+		if err != nil {
+			log.Warningf("Unable to parse private key %v: %v", i, err)
+			continue
+		}
+		signers = append(signers, signer)
 	}
-	signer, err := ssh.ParsePrivateKey(key)
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse private key: %v", err)
+
+	if len(signers) == 0 {
+		return nil, fmt.Errorf("no key files found.")
 	}
+
 	knownHostsCallback, err := knownhosts.New(sshConfigPath("known_hosts"))
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: timeout
 	conf := ssh.ClientConfig{
 		User: user,
 		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
+			ssh.PublicKeys(signers...),
 		},
 		HostKeyCallback: knownHostsCallback,
 		Timeout:         sshConnTimeout,

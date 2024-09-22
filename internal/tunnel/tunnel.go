@@ -26,7 +26,7 @@ type Tunnel struct {
 	Port          int           `toml:"port" json:"port"`
 	Status        Status        `toml:"-" json:"status"`
 	Closed        chan struct{} `toml:"-" json:"-"`
-	rc            *RunConfig    `toml:"-" json:"-"`
+	rc            *runConfig    `toml:"-" json:"-"`
 	client        *ssh.Client   `toml:"-" json:"-"`
 	listener      net.Listener  `toml:"-" json:"-"`
 	stop          chan struct{} `toml:"-" json:"-"`

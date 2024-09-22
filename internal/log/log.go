@@ -38,6 +38,11 @@ func Infof(format string, a ...any) {
 	fmt.Fprintf(logFile, "%s %sINFO%s %s\n", timestamp(), ColorBlue, ColorReset, message)
 }
 
+func Warningf(format string, a ...any) {
+	message := fmt.Sprintf(format, a...)
+	fmt.Fprintf(logFile, "%s %sWARNING%s %s\n", timestamp(), ColorYellow, ColorReset, message)
+}
+
 func Errorf(format string, a ...any) {
 	message := fmt.Sprintf(format, a...)
 	fmt.Fprintf(logFile, "%s %sERROR%s %s\n", timestamp(), ColorRed, ColorReset, message)
