@@ -21,7 +21,7 @@ const (
 const maxFileSize = 128 * 1024 // 128 KiB
 
 var writer io.Writer = &logWriter{inner: os.Stdout}
-var debug = len(os.Getenv("DEBUG")) > 0
+var debug = os.Getenv("DEBUG") != ""
 
 // writer wraps an io.Writer and implements locking and rotation
 type logWriter struct {
@@ -29,6 +29,7 @@ type logWriter struct {
 	mutex sync.Mutex
 }
 
+// Write implements io.Writer, locking and rotating as needed
 func (w *logWriter) Write(bytes []byte) (int, error) {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
@@ -89,6 +90,7 @@ func Fatalf(format string, a ...any) {
 	os.Exit(1)
 }
 
+// SetOutput sets the io.Writer to which log messages are written
 func SetOutput(w io.Writer) {
 	writer = &logWriter{inner: w}
 }
