@@ -22,14 +22,12 @@ func main() {
 	switch os.Args[1] {
 	case "open", "o":
 		if len(os.Args) < 3 {
-			fmt.Println("Error: 'open' requires at least one 'name' argument.")
-			os.Exit(1)
+			log.Fatalf("'open' requires at least one 'name' argument.")
 		}
 		controlTunnels(os.Args[2:], daemon.Open)
 	case "close", "c":
 		if len(os.Args) < 3 {
-			fmt.Println("Error: 'close' requires at least one 'name' argument.")
-			os.Exit(1)
+			log.Fatalf("'close' requires at least one 'name' argument.")
 		}
 		controlTunnels(os.Args[2:], daemon.Close)
 	case "list", "l":

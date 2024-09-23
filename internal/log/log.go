@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -19,35 +20,38 @@ const (
 
 const maxFileSize = 128 * 1024 // 128 KiB
 
-var logFile io.Writer = os.Stdout
+var writer io.Writer = &logWriter{inner: os.Stdout}
 var debug = len(os.Getenv("DEBUG")) > 0
 
+// writer wraps an io.Writer and implements locking and rotation
 type logWriter struct {
-	writer io.Writer
+	inner io.Writer
+	mutex sync.Mutex
 }
 
-func (w logWriter) Write(bytes []byte) (int, error) {
+func (w *logWriter) Write(bytes []byte) (int, error) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
 	w.tryRotate()
-	return w.writer.Write(bytes)
+	return w.inner.Write(bytes)
 }
 
-func (w logWriter) tryRotate() bool {
-	f, ok := w.writer.(*os.File)
+func (w *logWriter) tryRotate() {
+	f, ok := w.inner.(*os.File)
 	if !ok {
 		// Not a file, can't rotate
-		return false
+		return
 	}
 	info, err := f.Stat()
 	if err != nil {
-		return false
+		return
 	}
 	if info.Size() < maxFileSize {
 		// Not ripe for rotation
-		return false
+		return
 	}
 	syscall.Ftruncate(int(f.Fd()), 0)
 	f.Seek(0, 0)
-	return true
 }
 
 func timestamp() string {
@@ -61,30 +65,30 @@ func Debugf(format string, a ...any) {
 		return
 	}
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(logFile, "%s DEBUG %s\n", timestamp(), message)
+	fmt.Fprintf(writer, "%s DEBUG %s\n", timestamp(), message)
 }
 
 func Infof(format string, a ...any) {
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(logFile, "%s %sINFO%s %s\n", timestamp(), ColorBlue, ColorReset, message)
+	fmt.Fprintf(writer, "%s %sINFO%s %s\n", timestamp(), ColorBlue, ColorReset, message)
 }
 
 func Warningf(format string, a ...any) {
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(logFile, "%s %sWARNING%s %s\n", timestamp(), ColorYellow, ColorReset, message)
+	fmt.Fprintf(writer, "%s %sWARNING%s %s\n", timestamp(), ColorYellow, ColorReset, message)
 }
 
 func Errorf(format string, a ...any) {
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(logFile, "%s %sERROR%s %s\n", timestamp(), ColorRed, ColorReset, message)
+	fmt.Fprintf(writer, "%s %sERROR%s %s\n", timestamp(), ColorRed, ColorReset, message)
 }
 
 func Fatalf(format string, a ...any) {
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(logFile, "%s %sFATAL%s %s\n", timestamp(), ColorRed, ColorReset, message)
+	fmt.Fprintf(writer, "%s %sFATAL%s %s\n", timestamp(), ColorRed, ColorReset, message)
 	os.Exit(1)
 }
 
-func SetOutput(writer io.Writer) {
-	logFile = logWriter{writer: writer}
+func SetOutput(w io.Writer) {
+	writer = &logWriter{inner: w}
 }
