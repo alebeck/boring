@@ -70,7 +70,7 @@ func prepare() (*config.Config, error) {
 	return conf, nil
 }
 
-func controlTunnels(names []string, kind daemon.CommandKind) {
+func controlTunnels(names []string, kind daemon.CmdKind) {
 	conf, err := prepare()
 	if err != nil {
 		log.Fatalf(err.Error())
@@ -93,7 +93,7 @@ func controlTunnels(names []string, kind daemon.CommandKind) {
 	}
 }
 
-func controlTunnel(name string, kind daemon.CommandKind, conf *config.Config) {
+func controlTunnel(name string, kind daemon.CmdKind, conf *config.Config) {
 	tun, ok := conf.TunnelsMap[name]
 	if !ok {
 		log.Errorf("Tunnel '%s' not found in configuration (%s).",
@@ -101,9 +101,9 @@ func controlTunnel(name string, kind daemon.CommandKind, conf *config.Config) {
 		return
 	}
 
-	var resp daemon.Response
-	cmd := daemon.Command{Kind: kind, Tunnel: *tun}
-	if err := transmitCommand(cmd, &resp); err != nil {
+	var resp daemon.Resp
+	cmd := daemon.Cmd{Kind: kind, Tunnel: *tun}
+	if err := transmitCmd(cmd, &resp); err != nil {
 		log.Errorf("Could not transmit command: %v", err)
 	}
 
@@ -136,9 +136,9 @@ func listTunnels() {
 		return
 	}
 
-	var resp daemon.Response
-	cmd := daemon.Command{Kind: daemon.List}
-	if err = transmitCommand(cmd, &resp); err != nil {
+	var resp daemon.Resp
+	cmd := daemon.Cmd{Kind: daemon.List}
+	if err = transmitCmd(cmd, &resp); err != nil {
 		log.Errorf("Could not transmit command: %v", err)
 		return
 	}
@@ -164,7 +164,7 @@ func listTunnels() {
 	tbl.Print()
 }
 
-func transmitCommand(cmd daemon.Command, resp any) error {
+func transmitCmd(cmd daemon.Cmd, resp any) error {
 	conn, err := daemon.Connect()
 	if err != nil {
 		return fmt.Errorf("could not connect to daemon: %v", err)

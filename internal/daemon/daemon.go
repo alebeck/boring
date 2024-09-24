@@ -3,6 +3,7 @@ package daemon
 import (
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"syscall"
 	"time"
@@ -12,43 +13,54 @@ import (
 )
 
 const (
-	SOCK          = "/tmp/boringd.sock"
-	LOG_FILE      = "/tmp/boringd.log"
-	EXEC          = "boringd"
-	INIT_WAIT     = 2 * time.Millisecond
-	START_TIMEOUT = 2 * time.Second
+	DEFAULT_SOCK     = "/tmp/boringd.sock"
+	DEFAULT_LOG_FILE = "/tmp/boringd.log"
+	EXEC             = "boringd"
+	INIT_WAIT        = 2 * time.Millisecond
+	START_TIMEOUT    = 2 * time.Second
 )
 
-type CommandKind int
+type CmdKind int
 
 const (
-	Nop CommandKind = iota
+	Nop CmdKind = iota
 	Open
 	Close
 	List
 )
 
-var commandKindNames = map[CommandKind]string{
+var cmdKindNames = map[CmdKind]string{
 	Nop:   "Nop",
 	Open:  "Open",
 	Close: "Close",
 	List:  "List",
 }
 
-func (k CommandKind) String() string {
-	n, ok := commandKindNames[k]
+var SOCK, LOG_FILE string
+
+func init() {
+	if SOCK = os.Getenv("BORING_SOCK"); SOCK == "" {
+		SOCK = DEFAULT_SOCK
+	}
+	if LOG_FILE = os.Getenv("BORING_LOG_FILE"); LOG_FILE == "" {
+		LOG_FILE = DEFAULT_LOG_FILE
+	}
+}
+
+func (k CmdKind) String() string {
+	n, ok := cmdKindNames[k]
 	if !ok {
 		return fmt.Sprintf("%d", int(k))
 	}
 	return n
 }
 
-type Command struct {
-	Kind   CommandKind   `json:"kind"`
+type Cmd struct {
+	Kind   CmdKind       `json:"kind"`
 	Tunnel tunnel.Tunnel `json:"tunnel,omitempty"`
 }
 
-type Response struct {
+type Resp struct {
 	Success bool                     `json:"success"`
 	Error   string                   `json:"error"`
 	Tunnels map[string]tunnel.Tunnel `json:"tunnels"`
