@@ -31,7 +31,7 @@ type runConfig struct {
 	hostName      string
 	user          string
 	port          int
-	identityFile  string
+	identityFiles []string
 	clientConfig  *ssh.ClientConfig
 }
 
@@ -39,9 +39,7 @@ func (t *Tunnel) makeRunConfig() error {
 	rc := runConfig{}
 
 	// Fill in rc's values based on ssh config
-	if err := parseSSHConf(t.Host, &rc); err != nil {
-		return fmt.Errorf("could not parse SSH config: %v", err)
-	}
+	rc.parseSSHConf(t.Host)
 
 	// Override values which were manually set by user
 	if t.User != "" {
@@ -51,7 +49,7 @@ func (t *Tunnel) makeRunConfig() error {
 		rc.port = t.Port
 	}
 	if t.IdentityFile != "" {
-		rc.identityFile = t.IdentityFile
+		rc.identityFiles = []string{t.IdentityFile}
 	}
 
 	// If port is still not set, use default
@@ -70,7 +68,7 @@ func (t *Tunnel) makeRunConfig() error {
 
 	// Make SSH client config
 	var err error
-	if rc.clientConfig, err = makeClientConfig(rc.user, rc.identityFile); err != nil {
+	if rc.clientConfig, err = makeClientConfig(rc.user, rc.identityFiles); err != nil {
 		return fmt.Errorf("could not make client config: %v", err)
 	}
 
@@ -87,29 +85,11 @@ func (t *Tunnel) makeRunConfig() error {
 	return nil
 }
 
-func parseSSHConf(alias string, rc *runConfig) error {
-	// TODO check /etc/ssh/ssh_config if user one does not exist
-	sshConfFile, err := os.Open(sshConfigPath("config"))
-	if err != nil {
-		return nil
-	}
-	sshConf, err := ssh_config.Decode(sshConfFile)
-	if err != nil {
-		return fmt.Errorf("could not decode ssh config: %v", err)
-	}
-	sshConfFile.Close()
-
-	// TODO: allow multiple key files
-	rc.identityFile, _ = sshConf.Get(alias, "IdentityFile")
-
-	rc.user, _ = sshConf.Get(alias, "User")
-
-	port, _ := sshConf.Get(alias, "Port")
-	rc.port, _ = strconv.Atoi(port)
-
-	rc.hostName, _ = sshConf.Get(alias, "HostName")
-
-	return nil
+func (rc *runConfig) parseSSHConf(alias string) {
+	rc.identityFiles = ssh_config.GetAll(alias, "IdentityFile")
+	rc.user = ssh_config.Get(alias, "User")
+	rc.port, _ = strconv.Atoi(ssh_config.Get(alias, "Port"))
+	rc.hostName = ssh_config.Get(alias, "HostName")
 }
 
 func validate(rc *runConfig) error {
@@ -125,23 +105,26 @@ func validate(rc *runConfig) error {
 	return nil
 }
 
-func makeClientConfig(user, identityFile string) (*ssh.ClientConfig, error) {
+func makeClientConfig(user string, identityFiles []string) (*ssh.ClientConfig, error) {
 	var signers []ssh.Signer
-
-	signer, err := loadKey(identityFile)
-	if err == nil {
-		signers = append(signers, *signer)
-	} else {
-		log.Warningf("no identity file: %v, trying default ones", err)
-		for _, k := range defaultKeys {
-			signer, err := loadKey(k)
+	addKeyFiles := func(files []string) {
+		for _, f := range files {
+			s, err := loadKey(f)
 			if err != nil {
-				log.Warningf("Unable to parse private key %v: %v", k, err)
+				log.Warningf("key file %v could not be added: %v", f, err)
 				continue
 			}
-			signers = append(signers, *signer)
+			signers = append(signers, *s)
 		}
-		// Here, we will also add potential keys exposed by ssh-agent
+	}
+
+	addKeyFiles(identityFiles)
+
+	if len(signers) == 0 {
+		log.Warningf("No key files specified, trying default ones")
+		addKeyFiles(defaultKeys)
+
+		// Also add potential keys exposed by ssh-agent
 		agentSigners, err := getAgentSigners()
 		if err != nil {
 			log.Warningf("Unable to get keys from ssh-agent: %v", err)
