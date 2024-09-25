@@ -54,7 +54,6 @@ func watchSignal() {
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	log.Infof("Received signal: %s. Closing.", <-sig)
 	listener.Close()
-	log.Infof("Closed listener.")
 }
 
 // Logic for socket cleanup on TERM/INT signal. On
@@ -162,9 +161,7 @@ func closeTunnel(conn net.Conn, q tunnel.Tunnel) {
 		err = fmt.Errorf("could not close tunnel: %v", err)
 		return
 	}
-	mutex.Lock()
-	delete(tunnels, t.Name)
-	mutex.Unlock()
+	<-t.Closed
 }
 
 func listTunnels(conn net.Conn) {

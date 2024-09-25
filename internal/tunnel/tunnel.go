@@ -116,13 +116,13 @@ func (t *Tunnel) watch() {
 	case <-clientClosed:
 		if err := t.reconnectLoop(); err != nil {
 			t.Status = Closed
-			t.Closed <- struct{}{}
+			close(t.Closed)
 		}
 	case <-t.stop:
 		log.Infof("Received stop signal for %v...", t.Name)
 		t.client.Close() // Will automatically close listener
 		t.Status = Closed
-		t.Closed <- struct{}{}
+		close(t.Closed)
 	}
 }
 
