@@ -3,13 +3,15 @@ package config
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/BurntSushi/toml"
+	"github.com/alebeck/boring/internal/paths"
 	"github.com/alebeck/boring/internal/tunnel"
 )
 
-const FileName = ".boring.toml"
+const defaultFileName = "~/.boring.toml"
+
+var FileName string
 
 // Config represents the application configuration as parsed from ./boring.toml
 type Config struct {
@@ -17,11 +19,17 @@ type Config struct {
 	TunnelsMap map[string]*tunnel.Tunnel `toml:"-"`
 }
 
+func init() {
+	if FileName = os.Getenv("BORING_CONFIG"); FileName == "" {
+		FileName = defaultFileName
+	}
+	FileName = paths.ReplaceTilde(FileName)
+}
+
 // LoadConfig parses the boring configuration file
 func LoadConfig() (*Config, error) {
 	var config Config
-	confPath := filepath.Join(os.Getenv("HOME"), FileName)
-	if _, err := toml.DecodeFile(confPath, &config); err != nil {
+	if _, err := toml.DecodeFile(FileName, &config); err != nil {
 		return nil, fmt.Errorf("could not decode config file: %v", err)
 	}
 

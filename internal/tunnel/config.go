@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/alebeck/boring/internal/log"
+	"github.com/alebeck/boring/internal/paths"
 	"github.com/kevinburke/ssh_config"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -157,7 +158,7 @@ func loadKey(path string) (*ssh.Signer, error) {
 	if path == "" {
 		return nil, fmt.Errorf("no key specified")
 	}
-	key, err := os.ReadFile(fillHome(path))
+	key, err := os.ReadFile(paths.ReplaceTilde(path))
 	if err != nil {
 		return nil, fmt.Errorf("could not read key: %v", err)
 	}
@@ -179,16 +180,6 @@ func getAgentSigners() ([]ssh.Signer, error) {
 
 func sshConfigPath(filename string) string {
 	return filepath.Join(os.Getenv("HOME"), ".ssh", filename)
-}
-
-func fillHome(path string) string {
-	home := os.Getenv("HOME")
-	if path == "~" {
-		return home
-	} else if strings.HasPrefix(path, "~/") {
-		return filepath.Join(home, path[2:])
-	}
-	return path
 }
 
 func netType(addr string) string {

@@ -147,6 +147,11 @@ func listTunnels() {
 		return
 	}
 
+	if len(resp.Tunnels) == 0 && len(conf.Tunnels) == 0 {
+		log.Infof("No tunnels configured. Your config file is: %s", config.FileName)
+		return
+	}
+
 	tbl := table.New("Status", "Name", "Local", "", "Remote", "Via")
 
 	visited := make(map[string]bool)
