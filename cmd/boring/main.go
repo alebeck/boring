@@ -94,7 +94,7 @@ func controlTunnels(names []string, kind daemon.CmdKind) {
 }
 
 func controlTunnel(name string, kind daemon.CmdKind, conf *config.Config) {
-	tun, ok := conf.TunnelsMap[name]
+	t, ok := conf.TunnelsMap[name]
 	if !ok {
 		log.Errorf("Tunnel '%s' not found in configuration (%s).",
 			name, config.CONFIG_FILE_NAME)
@@ -102,7 +102,7 @@ func controlTunnel(name string, kind daemon.CmdKind, conf *config.Config) {
 	}
 
 	var resp daemon.Resp
-	cmd := daemon.Cmd{Kind: kind, Tunnel: *tun}
+	cmd := daemon.Cmd{Kind: kind, Tunnel: *t}
 	if err := transmitCmd(cmd, &resp); err != nil {
 		log.Errorf("Could not transmit command: %v", err)
 	}
@@ -118,13 +118,13 @@ func controlTunnel(name string, kind daemon.CmdKind, conf *config.Config) {
 		}
 	} else {
 		if kind == daemon.Open {
-			log.Infof("Opened tunnel %s: %s -> %s via %s",
-				log.ColorGreen+tun.Name+log.ColorReset,
-				tun.LocalAddress, tun.RemoteAddress, tun.Host)
+			log.Infof("Opened tunnel %s: %s %v %s via %s",
+				log.ColorGreen+t.Name+log.ColorReset,
+				t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
 		} else if kind == daemon.Close {
-			log.Infof("Closed tunnel %s", log.ColorGreen+tun.Name+log.ColorReset)
+			log.Infof("Closed tunnel %s", log.ColorGreen+t.Name+log.ColorReset)
 		} else {
-			log.Infof("Executed command %v for tunnel %s", kind, tun.Name)
+			log.Infof("Executed command %v for tunnel %s", kind, t.Name)
 		}
 	}
 }
@@ -147,18 +147,18 @@ func listTunnels() {
 		return
 	}
 
-	tbl := table.New("Status", "Name", "Local", "Remote", "Via")
+	tbl := table.New("Status", "Name", "Local", "", "Remote", "Via")
 
 	visited := make(map[string]bool)
 
 	for _, t := range conf.Tunnels {
 		if q, ok := resp.Tunnels[t.Name]; ok {
-			tbl.AddRow(q.Status, q.Name, q.LocalAddress, q.RemoteAddress, q.Host)
+			tbl.AddRow(q.Status, q.Name, q.LocalAddress, q.Mode, q.RemoteAddress, q.Host)
 			visited[q.Name] = true
 			continue
 		}
 		// TODO: case where tunnel is in resp but with different name
-		tbl.AddRow(tunnel.Closed, t.Name, t.LocalAddress, t.RemoteAddress, t.Host)
+		tbl.AddRow(tunnel.Closed, t.Name, t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
 	}
 
 	tbl.Print()

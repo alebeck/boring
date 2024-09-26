@@ -15,9 +15,9 @@ const (
 )
 
 var statusNames = map[Status]string{
-	Closed: log.ColorRed + "CLOSED" + log.ColorReset,
-	Open:   log.ColorGreen + "OPEN" + log.ColorReset,
-	Reconn: log.ColorYellow + "RECONN" + log.ColorReset,
+	Closed: log.ColorRed + "Closed" + log.ColorReset,
+	Open:   log.ColorGreen + "Open" + log.ColorReset,
+	Reconn: log.ColorYellow + "Reconn" + log.ColorReset,
 }
 
 func (s Status) String() string {

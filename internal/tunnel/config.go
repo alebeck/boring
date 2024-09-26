@@ -23,6 +23,7 @@ const (
 
 var defaultKeys = []string{"~/.ssh/id_rsa", "~/.ssh/id_ecdsa", "~/.ssh/id_ed25519"}
 
+// TODO: embed into Tunnel?
 type runConfig struct {
 	localAddress  string
 	remoteAddress string

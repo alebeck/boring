@@ -24,6 +24,7 @@ type Tunnel struct {
 	User          string        `toml:"user" json:"user"`
 	IdentityFile  string        `toml:"identity" json:"identity"`
 	Port          int           `toml:"port" json:"port"`
+	Mode          Mode          `toml:"mode" json:"mode"`
 	Status        Status        `toml:"-" json:"status"`
 	Closed        chan struct{} `toml:"-" json:"-"`
 	rc            *runConfig    `toml:"-" json:"-"`
@@ -40,15 +41,12 @@ func (t *Tunnel) Open() error {
 		}
 	}
 
-	addr := fmt.Sprintf("%v:%v", t.rc.hostName, t.rc.port)
-	t.client, err = ssh.Dial("tcp", addr, t.rc.clientConfig)
-	if err != nil {
-		return fmt.Errorf("could not dial remote: %v", err)
+	if err = t.setupClient(); err != nil {
+		return fmt.Errorf("could not setup SSH client: %v", err)
 	}
 
-	t.listener, err = net.Listen(t.rc.localNet, t.rc.localAddress)
-	if err != nil {
-		return fmt.Errorf("can not listen: %v", err)
+	if err = t.setupListener(); err != nil {
+		return fmt.Errorf("cannot listen: %v", err)
 	}
 
 	if t.stop == nil {
@@ -57,19 +55,44 @@ func (t *Tunnel) Open() error {
 	}
 
 	go t.watch()
-	go t.handleConnections()
+	go t.handleConns()
 
 	log.Infof("Opened tunnel %v...", t.Name)
 	t.Status = Open
 	return nil
 }
 
-func (t *Tunnel) handleConnections() {
+func (t *Tunnel) setupClient() error {
+	var err error
+	addr := fmt.Sprintf("%v:%v", t.rc.hostName, t.rc.port)
+	t.client, err = ssh.Dial("tcp", addr, t.rc.clientConfig)
+	return err
+}
+
+func (t *Tunnel) setupListener() error {
+	var err error
+	if t.Mode == Local {
+		t.listener, err = net.Listen(t.rc.localNet, t.rc.localAddress)
+	} else {
+		t.listener, err = t.client.Listen(t.rc.remoteNet, t.rc.remoteAddress)
+	}
+	return err
+}
+
+func (t *Tunnel) handleConns() {
+	if t.Mode == Local {
+		t.handleLocalConns()
+	} else {
+		t.handleRemoteConns()
+	}
+}
+
+func (t *Tunnel) handleLocalConns() {
 	defer t.listener.Close()
 	defer t.client.Close()
 
-	// Only handle one connection at a time
 	for {
+		// Only handle one connection at a time
 		local, err := t.listener.Accept()
 		if err != nil {
 			log.Errorf("could not accept: %v", err)
@@ -83,6 +106,27 @@ func (t *Tunnel) handleConnections() {
 		}
 
 		runTunnel(local, remote)
+	}
+}
+
+func (t *Tunnel) handleRemoteConns() {
+	defer t.listener.Close()
+	defer t.client.Close()
+
+	for {
+		remote, err := t.listener.Accept()
+		if err != nil {
+			log.Errorf("could not accept on remote: %v", err)
+			return
+		}
+		go func() {
+			local, err := net.Dial(t.rc.localNet, t.rc.localAddress)
+			if err != nil {
+				log.Errorf("could not dial locally: %v", err)
+				return
+			}
+			runTunnel(local, remote)
+		}()
 	}
 }
 
@@ -120,7 +164,7 @@ func (t *Tunnel) watch() {
 		}
 	case <-t.stop:
 		log.Infof("Received stop signal for %v...", t.Name)
-		t.client.Close() // Will automatically close listener
+		t.client.Close() // Will also close listener
 		t.Status = Closed
 		close(t.Closed)
 	}
