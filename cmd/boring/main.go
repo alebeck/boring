@@ -46,6 +46,16 @@ func prepare() (*config.Config, error) {
 
 	go func() {
 		var err error
+		// Check if config file exists, otherwise we can create it
+		if _, statErr := os.Stat(config.FileName); statErr != nil {
+			var f *os.File
+			if f, err = os.Create(config.FileName); err != nil {
+				errs <- fmt.Errorf("could not create config file: %v", err)
+				return
+			}
+			f.Close()
+			log.Infof("Created boring config file: %s", config.FileName)
+		}
 		conf, err = config.LoadConfig()
 		if err != nil {
 			err = fmt.Errorf("Could not load configuration: %v", err)
@@ -148,7 +158,7 @@ func listTunnels() {
 	}
 
 	if len(resp.Tunnels) == 0 && len(conf.Tunnels) == 0 {
-		log.Infof("No tunnels configured. Your config file is: %s", config.FileName)
+		log.Infof("No tunnels configured.")
 		return
 	}
 
