@@ -16,6 +16,7 @@ import (
 	"github.com/alebeck/boring/internal/tunnel"
 )
 
+// TODO: write proper concurrent map structure for this
 var tunnels = make(map[string]*tunnel.Tunnel)
 var mutex sync.RWMutex
 var listener net.Listener
@@ -123,9 +124,16 @@ func respond(conn net.Conn, err *error) {
 }
 
 func openTunnel(conn net.Conn, t tunnel.Tunnel) {
-	// TODO check if already running, i.e. whether its in the map
 	var err error
 	defer respond(conn, &err)
+
+	mutex.RLock()
+	_, exists := tunnels[t.Name]
+	mutex.RUnlock()
+	if exists {
+		err = fmt.Errorf("tunnel already running")
+		return
+	}
 
 	if err = t.Open(); err != nil {
 		return
