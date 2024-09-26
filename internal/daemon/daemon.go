@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 const (
 	defaultSock    = "/tmp/boringd.sock"
 	defaultLogFile = "/tmp/boringd.log"
-	executable     = "boringd"
+	executableName = "boringd"
 	initWait       = 2 * time.Millisecond
 	startTimeout   = 2 * time.Second
 )
@@ -36,7 +37,7 @@ var cmdKindNames = map[CmdKind]string{
 	List:  "List",
 }
 
-var Sock, LogFile string
+var Sock, LogFile, executableFile string
 
 func init() {
 	if Sock = os.Getenv("BORING_SOCK"); Sock == "" {
@@ -45,6 +46,11 @@ func init() {
 	if LogFile = os.Getenv("BORING_LOG_FILE"); LogFile == "" {
 		LogFile = defaultLogFile
 	}
+	p, err := os.Executable()
+	if err != nil {
+		panic("could not determine executable path")
+	}
+	executableFile = filepath.Join(filepath.Dir(p), executableName)
 }
 
 func (k CmdKind) String() string {
@@ -83,7 +89,7 @@ func Ensure() error {
 				return nil
 			}
 			if !starting {
-				if err := startDaemon(executable, Sock, LogFile); err != nil {
+				if err := startDaemon(executableFile, Sock, LogFile); err != nil {
 					return fmt.Errorf("Failed to start daemon: %v", err)
 				}
 				starting = true
