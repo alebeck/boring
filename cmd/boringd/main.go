@@ -82,7 +82,7 @@ func setupLogger(path string) {
 }
 
 func setupListener() (net.Listener, error) {
-	return net.Listen("unix", daemon.SOCK)
+	return net.Listen("unix", daemon.Sock)
 }
 
 func handleConnection(conn net.Conn) {

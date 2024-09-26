@@ -13,11 +13,11 @@ import (
 )
 
 const (
-	DEFAULT_SOCK     = "/tmp/boringd.sock"
-	DEFAULT_LOG_FILE = "/tmp/boringd.log"
-	EXEC             = "boringd"
-	INIT_WAIT        = 2 * time.Millisecond
-	START_TIMEOUT    = 2 * time.Second
+	defaultSock    = "/tmp/boringd.sock"
+	defaultLogFile = "/tmp/boringd.log"
+	executable     = "boringd"
+	initWait       = 2 * time.Millisecond
+	startTimeout   = 2 * time.Second
 )
 
 type CmdKind int
@@ -36,14 +36,14 @@ var cmdKindNames = map[CmdKind]string{
 	List:  "List",
 }
 
-var SOCK, LOG_FILE string
+var Sock, LogFile string
 
 func init() {
-	if SOCK = os.Getenv("BORING_SOCK"); SOCK == "" {
-		SOCK = DEFAULT_SOCK
+	if Sock = os.Getenv("BORING_SOCK"); Sock == "" {
+		Sock = defaultSock
 	}
-	if LOG_FILE = os.Getenv("BORING_LOG_FILE"); LOG_FILE == "" {
-		LOG_FILE = DEFAULT_LOG_FILE
+	if LogFile = os.Getenv("BORING_LOG_FILE"); LogFile == "" {
+		LogFile = defaultLogFile
 	}
 }
 
@@ -69,21 +69,21 @@ type Resp struct {
 // Ensure starts the daemon if it is not already running.
 // This function is blocking.
 func Ensure() error {
-	timer := time.After(START_TIMEOUT)
+	timer := time.After(startTimeout)
 	starting := false
-	sleepTime := INIT_WAIT
+	sleepTime := initWait
 
 	for {
 		select {
 		case <-timer:
-			return fmt.Errorf("Daemon was not responsive after %v", START_TIMEOUT)
+			return fmt.Errorf("Daemon was not responsive after %v", startTimeout)
 		default:
 			if conn, err := Connect(); err == nil {
 				go func() { conn.Close() }()
 				return nil
 			}
 			if !starting {
-				if err := startDaemon(EXEC, SOCK, LOG_FILE); err != nil {
+				if err := startDaemon(executable, Sock, LogFile); err != nil {
 					return fmt.Errorf("Failed to start daemon: %v", err)
 				}
 				starting = true
@@ -95,7 +95,7 @@ func Ensure() error {
 }
 
 func Connect() (net.Conn, error) {
-	return net.Dial("unix", SOCK)
+	return net.Dial("unix", Sock)
 }
 
 func startDaemon(name string, args ...string) error {

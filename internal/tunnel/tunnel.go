@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	RECONNECT_WAIT    = 2 * time.Millisecond
-	RECONNECT_TIMEOUT = 10 * time.Minute
+	reconnectWait    = 2 * time.Millisecond
+	reconnectTimeout = 10 * time.Minute
 )
 
 // Tunnel represents an SSH tunnel configuration and management
@@ -172,9 +172,9 @@ func (t *Tunnel) watch() {
 
 func (t *Tunnel) reconnectLoop() error {
 	t.Status = Reconn
-	timeout := time.After(RECONNECT_TIMEOUT)
+	timeout := time.After(reconnectTimeout)
 	wait := time.NewTimer(0.) // First time try immediately
-	waitTime := RECONNECT_WAIT
+	waitTime := reconnectWait
 
 	for {
 		select {

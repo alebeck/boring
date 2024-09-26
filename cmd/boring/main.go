@@ -97,7 +97,7 @@ func controlTunnel(name string, kind daemon.CmdKind, conf *config.Config) {
 	t, ok := conf.TunnelsMap[name]
 	if !ok {
 		log.Errorf("Tunnel '%s' not found in configuration (%s).",
-			name, config.CONFIG_FILE_NAME)
+			name, config.FileName)
 		return
 	}
 

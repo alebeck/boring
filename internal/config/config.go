@@ -9,7 +9,7 @@ import (
 	"github.com/alebeck/boring/internal/tunnel"
 )
 
-const CONFIG_FILE_NAME = ".boring.toml"
+const FileName = ".boring.toml"
 
 // Config represents the application configuration as parsed from ./boring.toml
 type Config struct {
@@ -20,7 +20,7 @@ type Config struct {
 // LoadConfig parses the boring configuration file
 func LoadConfig() (*Config, error) {
 	var config Config
-	confPath := filepath.Join(os.Getenv("HOME"), CONFIG_FILE_NAME)
+	confPath := filepath.Join(os.Getenv("HOME"), FileName)
 	if _, err := toml.DecodeFile(confPath, &config); err != nil {
 		return nil, fmt.Errorf("could not decode config file: %v", err)
 	}
