@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -17,24 +16,22 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
-const (
-	sshPort        = 22
-	sshConnTimeout = 10 * time.Second
-)
+const sshConnTimeout = 10 * time.Second
 
 var defaultKeys = []string{"~/.ssh/id_rsa", "~/.ssh/id_ecdsa", "~/.ssh/id_ed25519"}
 
 // TODO: embed into Tunnel?
 type runConfig struct {
-	localAddress  string
-	remoteAddress string
-	localNet      string // tcp, unix
-	remoteNet     string // tcp, unix
-	hostName      string
-	user          string
-	port          int
-	identityFiles []string
-	clientConfig  *ssh.ClientConfig
+	localAddress    string
+	remoteAddress   string
+	localNet        string // tcp, unix
+	remoteNet       string // tcp, unix
+	hostName        string
+	user            string
+	port            int
+	identityFiles   []string
+	knownHostsFiles []string
+	clientConfig    *ssh.ClientConfig
 }
 
 func (t *Tunnel) makeRunConfig() error {
@@ -54,11 +51,6 @@ func (t *Tunnel) makeRunConfig() error {
 		rc.identityFiles = []string{t.IdentityFile}
 	}
 
-	// If port is still not set, use default
-	if rc.port == 0 {
-		rc.port = sshPort
-	}
-
 	// If t.Host could not be resolved from ssh config, take it literally
 	if rc.hostName == "" {
 		rc.hostName = t.Host
@@ -69,8 +61,7 @@ func (t *Tunnel) makeRunConfig() error {
 	}
 
 	// Make SSH client config
-	var err error
-	if rc.clientConfig, err = makeClientConfig(rc.user, rc.identityFiles); err != nil {
+	if err := rc.makeClientConfig(); err != nil {
 		return fmt.Errorf("could not make client config: %v", err)
 	}
 
@@ -87,8 +78,17 @@ func (t *Tunnel) makeRunConfig() error {
 	return nil
 }
 
+// TODO: respect Cipher(s), HostKeyAlgorithms, KexAlgorithms, MACs
 func (rc *runConfig) parseSSHConf(alias string) {
 	rc.identityFiles = ssh_config.GetAll(alias, "IdentityFile")
+
+	// Known hosts
+	hosts := strings.Split(ssh_config.Get(alias, "GlobalKnownHostsFile"), " ")
+	for _, u := range ssh_config.GetAll(alias, "UserKnownHostsFile") {
+		hosts = append(hosts, strings.Split(u, " ")...)
+	}
+	rc.knownHostsFiles = hosts
+
 	rc.user = ssh_config.Get(alias, "User")
 	rc.port, _ = strconv.Atoi(ssh_config.Get(alias, "Port"))
 	rc.hostName = ssh_config.Get(alias, "HostName")
@@ -107,7 +107,7 @@ func validate(rc *runConfig) error {
 	return nil
 }
 
-func makeClientConfig(user string, identityFiles []string) (*ssh.ClientConfig, error) {
+func (rc *runConfig) makeClientConfig() error {
 	var signers []ssh.Signer
 	addKeyFiles := func(files []string) {
 		for _, f := range files {
@@ -120,7 +120,7 @@ func makeClientConfig(user string, identityFiles []string) (*ssh.ClientConfig, e
 		}
 	}
 
-	addKeyFiles(identityFiles)
+	addKeyFiles(rc.identityFiles)
 
 	if len(signers) == 0 {
 		log.Warningf("No key files specified, trying default ones")
@@ -134,24 +134,31 @@ func makeClientConfig(user string, identityFiles []string) (*ssh.ClientConfig, e
 		signers = append(signers, agentSigners...)
 
 		if len(signers) == 0 {
-			return nil, fmt.Errorf("no key files found.")
+			return fmt.Errorf("no key files found.")
 		}
 	}
 
-	knownHostsCallback, err := knownhosts.New(sshConfigPath("known_hosts"))
+	var hosts []string
+	for _, k := range rc.knownHostsFiles {
+		k = paths.ReplaceTilde(k)
+		if _, err := os.Stat(k); err == nil {
+			hosts = append(hosts, k)
+		}
+	}
+	knownHostsCallback, err := knownhosts.New(hosts...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	conf := ssh.ClientConfig{
-		User: user,
+	rc.clientConfig = &ssh.ClientConfig{
+		User: rc.user,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signers...),
 		},
 		HostKeyCallback: knownHostsCallback,
 		Timeout:         sshConnTimeout,
 	}
-	return &conf, nil
+	return nil
 }
 
 func loadKey(path string) (*ssh.Signer, error) {
@@ -176,10 +183,6 @@ func getAgentSigners() ([]ssh.Signer, error) {
 	}
 	c := agent.NewClient(sock)
 	return c.Signers()
-}
-
-func sshConfigPath(filename string) string {
-	return filepath.Join(os.Getenv("HOME"), ".ssh", filename)
 }
 
 func netType(addr string) string {
