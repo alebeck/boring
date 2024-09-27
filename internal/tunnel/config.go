@@ -68,7 +68,7 @@ func (t *Tunnel) makeRunConfig() error {
 	rc.remoteAddress = t.RemoteAddress
 	rc.remoteNet = netType(rc.remoteAddress)
 
-	rc.localAddress = t.LocalAddress
+	rc.localAddress = string(t.LocalAddress)
 	rc.localNet = netType(rc.localAddress)
 	if rc.localNet == "tcp" && !strings.Contains(rc.localAddress, ":") {
 		rc.localAddress = "localhost:" + rc.localAddress
