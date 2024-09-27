@@ -93,7 +93,13 @@ func controlTunnels(names []string, kind daemon.CmdKind) {
 	done := make(chan bool, len(names))
 	for _, name := range names {
 		go func() {
-			controlTunnel(name, kind, conf)
+			if kind == daemon.Open {
+				openTunnel(name, conf)
+			} else if kind == daemon.Close {
+				closeTunnel(name, conf)
+			} else {
+				log.Errorf("Unknown command: %v", kind)
+			}
 			done <- true
 		}()
 	}
@@ -103,7 +109,7 @@ func controlTunnels(names []string, kind daemon.CmdKind) {
 	}
 }
 
-func controlTunnel(name string, kind daemon.CmdKind, conf *config.Config) {
+func openTunnel(name string, conf *config.Config) {
 	t, ok := conf.TunnelsMap[name]
 	if !ok {
 		log.Errorf("Tunnel '%s' not found in configuration (%s).",
@@ -112,30 +118,35 @@ func controlTunnel(name string, kind daemon.CmdKind, conf *config.Config) {
 	}
 
 	var resp daemon.Resp
-	cmd := daemon.Cmd{Kind: kind, Tunnel: *t}
+	cmd := daemon.Cmd{Kind: daemon.Open, Tunnel: *t}
 	if err := transmitCmd(cmd, &resp); err != nil {
-		log.Errorf("Could not transmit command: %v", err)
+		log.Errorf("Could not transmit 'open' command: %v", err)
 	}
 
 	if !resp.Success {
-		if kind == daemon.Open {
-			log.Errorf("Tunnel %v could not be opened: %v", name, resp.Error)
-		} else if kind == daemon.Close {
-			log.Errorf("Tunnel %v could not be closed: %v", name, resp.Error)
-		} else {
-			log.Errorf("Command %v could not be executed for tunnel %v: %v",
-				kind, name, resp.Error)
-		}
+		log.Errorf("Tunnel %v could not be opened: %v", name, resp.Error)
 	} else {
-		if kind == daemon.Open {
-			log.Infof("Opened tunnel %s: %s %v %s via %s",
-				log.ColorGreen+t.Name+log.ColorReset,
-				t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
-		} else if kind == daemon.Close {
-			log.Infof("Closed tunnel %s", log.ColorGreen+t.Name+log.ColorReset)
-		} else {
-			log.Infof("Executed command %v for tunnel %s", kind, t.Name)
-		}
+		log.Infof("Opened tunnel %s: %s %v %s via %s",
+			log.ColorGreen+t.Name+log.ColorReset,
+			t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
+	}
+}
+
+func closeTunnel(name string, conf *config.Config) {
+	// The daemon only needs the name for closing. In cases where the
+	// config has changed, the name is all we have about the tunnel anyway.
+	t := tunnel.Tunnel{Name: name}
+
+	var resp daemon.Resp
+	cmd := daemon.Cmd{Kind: daemon.Close, Tunnel: t}
+	if err := transmitCmd(cmd, &resp); err != nil {
+		log.Errorf("Could not transmit 'close' command: %v", err)
+	}
+
+	if !resp.Success {
+		log.Errorf("Tunnel %v could not be closed: %v", name, resp.Error)
+	} else {
+		log.Infof("Closed tunnel %s", log.ColorGreen+t.Name+log.ColorReset)
 	}
 }
 
@@ -163,7 +174,6 @@ func listTunnels() {
 	}
 
 	tbl := table.New("Status", "Name", "Local", "", "Remote", "Via")
-
 	visited := make(map[string]bool)
 
 	for _, t := range conf.Tunnels {
@@ -174,6 +184,13 @@ func listTunnels() {
 		}
 		// TODO: case where tunnel is in resp but with different name
 		tbl.AddRow(tunnel.Closed, t.Name, t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
+	}
+
+	// Add tunnels that are in resp but not in the config
+	for _, q := range resp.Tunnels {
+		if !visited[q.Name] {
+			tbl.AddRow(q.Status, q.Name, q.LocalAddress, q.Mode, q.RemoteAddress, q.Host)
+		}
 	}
 
 	tbl.Print()
