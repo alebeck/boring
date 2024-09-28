@@ -14,6 +14,12 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == daemon.Flag {
+		// Run in daemon mode
+		daemon.Run()
+		os.Exit(0)
+	}
+
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
@@ -71,7 +77,7 @@ func prepare() (*config.Config, error) {
 		errs <- err
 	}()
 
-	for _ = range 2 {
+	for range 2 {
 		if err := <-errs; err != nil {
 			return nil, err
 		}
