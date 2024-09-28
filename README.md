@@ -1,11 +1,12 @@
-# `boring` SSH tunnel manager
+# The `boring` SSH tunnel manager
 
-TODO screenshot
+![Screenshot](./assets/dark.gif#gh-dark-mode-only)
+![Screenshot](./assets/light.gif#gh-light-mode-only)
 
 ## Features
-* Ultra-leightweight and fast
-* Compatible with SSH config and `ssh-agent`
+* Ultra lightweight and fast
 * Local and remote tunnels
+* Compatible with SSH config and `ssh-agent`
 * Supports Unix sockets
 * Automatic reconnection
 * Human-friendly configuration via TOML
@@ -19,25 +20,33 @@ Usage:
 ```
 
 ## Configuration
-By default, `boring` reads its configuration from `~/.boring.toml`. The configuration is a simple TOML file with the following structure:
+By default, `boring` reads its configuration from `~/.boring.toml`. The configuration is a simple TOML file describing your tunnels:
 
 ```toml
+# simple tunnel
 [[tunnels]]
 name = "dev"
 local = "9000"
 remote = "localhost:9000"
 host = "dev-server"  # automatically matches host against SSH config
-user = "root"  # optional, overrides matched values
-# ...
 
-[[tunnels]]
 # example of an explicit host (no SSH config)
+[[tunnels]]
 name = "prod"
 local = "5001"
 remote = "localhost:5001"
 host = "prod.example.com"
 user = "root"
 identity = "~/.ssh/id_prod"  # will try default ones if not set
+
+# example with unix sockets, and remote (-R) mode;
+# note that we can freely mix unix and TCP sockets
+[[tunnels]]
+name = "dev"
+local = "/tmp/serve.sock"
+remote = "/tmp/listen.sock"
+host = "dev-server"
+mode = "remote"
 
 # ... more tunnels
 ```
