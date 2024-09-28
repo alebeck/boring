@@ -1,7 +1,6 @@
 # The `boring` SSH tunnel manager
 
-![Screenshot](./assets/dark.gif#gh-dark-mode-only)
-![Screenshot](./assets/light.gif#gh-light-mode-only)
+![Screenshot](./assets/dark.gif)
 
 ## Features
 * Ultra lightweight and fast
