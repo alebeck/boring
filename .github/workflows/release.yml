@@ -10,9 +10,6 @@ jobs:
     name: Build and Release Binaries
     runs-on: ubuntu-latest
 
-    env:
-      APP_NAME: boring
-
     strategy:
       matrix:
         goos: [linux, darwin]
@@ -20,22 +17,22 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: 1.23
 
       - name: Build
         run: |
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o ${{ env.APP_NAME }}
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o boring ./cmd/boring
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APP_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: ${{ env.APP_NAME }}
+          name: boring-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: boring
 
   release:
     needs: build
@@ -55,6 +52,6 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ env.APP_NAME }}
-          asset_name: ${{ env.APP_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
+          asset_path: boring
+          asset_name: boring-${{ matrix.goos }}-${{ matrix.goarch }}
           asset_content_type: application/octet-stream
