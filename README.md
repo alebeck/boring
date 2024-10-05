@@ -45,7 +45,7 @@ identity = "~/.ssh/id_prod"  # will try default ones if not set
 # ... more tunnels
 ```
 
-Currently, supported options are: `name`, `local`, `remote`, `host`, `user`, `identity_file`, `port`, `mode`. `host` either describes a host which to match SSH configs to, or if not found, the actual hostname. `mode` can be 'local' for local or 'remote' for remote forwarding, default is 'local'. The location of the config file can be changed by setting the `BORING_CONFIG` environment variable.
+Currently, supported options are: `name`, `local`, `remote`, `host`, `user`, `identity`, `port`, and `mode`. `host` either describes a host which to match SSH configs to, or if no matches found, the actual hostname. `mode` can be 'local' for local or 'remote' for remote forwarding, default is 'local'. The location of the config file can be changed by setting the `BORING_CONFIG` environment variable.
 
 
 ## Installation
