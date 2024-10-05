@@ -1,4 +1,8 @@
-# The `boring` SSH tunnel manager
+# The `boring` tunnel manager
+
+![Static Badge](https://img.shields.io/badge/build-passing-green?) ![Static Badge](https://img.shields.io/badge/release-0.4.0-orange?) ![Static Badge](https://img.shields.io/badge/license-MIT-blue?)
+
+A simple & reliable command line SSH tunnel manager.
 
 ![Screenshot](./assets/dark.gif)
 
@@ -38,16 +42,16 @@ host = "prod.example.com"
 user = "root"
 identity = "~/.ssh/id_prod"  # will try default ones if not set
 
-# example with unix sockets, and remote (-R) mode;
-# note that we can freely mix unix and TCP sockets
-[[tunnels]]
-name = "dev"
-local = "/tmp/serve.sock"
-remote = "/tmp/listen.sock"
-host = "dev-server"
-mode = "remote"
-
 # ... more tunnels
 ```
 
 Currently, supported options are: `name`, `local`, `remote`, `host`, `user`, `identity_file`, `port`, `mode`. `host` either describes a host which to match SSH configs to, or if not found, the actual hostname. `mode` can be 'local' for local or 'remote' for remote forwarding, default is 'local'. The location of the config file can be changed by setting the `BORING_CONFIG` environment variable.
+
+
+## Installation
+Get one of the pre-built binaries from the [releases page](https://github.com/alebeck/boring/releases) or build it yourself:
+
+```sh
+git clone https://github.com/alebeck/boring && cd boring
+./build.sh
+```

@@ -1,0 +1,24 @@
+# simple tunnel
+[[tunnels]]
+name = "dev"
+local = "9000"
+remote = "localhost:9000"
+host = "dev-server"       # automatically matches host against SSH config
+
+# example of an explicit host (no SSH config)
+[[tunnels]]
+name = "prod"
+local = "5001"
+remote = "localhost:5001"
+host = "prod.example.com"
+user = "root"
+identity = "~/.ssh/id_prod" # will try default ones if not set
+
+# example with unix sockets, and remote (-R) mode;
+# note that we can freely mix unix and TCP sockets
+[[tunnels]]
+name = "dev"
+local = "/tmp/serve.sock"
+remote = "/tmp/listen.sock"
+host = "dev-server"
+mode = "remote"
