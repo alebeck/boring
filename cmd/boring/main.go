@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"slices"
+	"strings"
 
 	"github.com/alebeck/boring/internal/config"
 	"github.com/alebeck/boring/internal/daemon"
@@ -38,6 +40,11 @@ func main() {
 		controlTunnels(os.Args[2:], daemon.Close)
 	case "list", "l":
 		listTunnels()
+	case "connect":
+		if len(os.Args) < 3 {
+			log.Fatalf("'connect' requires a 'name' argument.")
+		}
+		connectTunnel(os.Args[2])
 	default:
 		fmt.Println("Unknown command:", os.Args[1])
 		printUsage()
@@ -202,6 +209,42 @@ func listTunnels() {
 	tbl.Print()
 }
 
+func connectTunnel(name string) {
+	conf, err := prepare()
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+
+	t, ok := conf.TunnelsMap[name]
+	if !ok {
+		log.Fatalf("Tunnel '%s' not found in configuration (%s).", name, config.FileName)
+	}
+
+	// Extract hostname and port from the tunnel configuration
+	hostname := t.Host
+	port := strings.Split(t.RemoteAddress, ":")[1] // Assuming RemoteAddress is in the format "host:port"
+
+	// Check if User is available in the tunnel configuration
+	user := "root" // Default user if not specified
+	if t.User != "" {
+		user = t.User
+	}
+
+	// Construct the SSH command
+	cmd := exec.Command("ssh", fmt.Sprintf("%s@%s", user, hostname), "-p", port)
+
+	// Set up command to use the current terminal
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	// Run the command
+	err = cmd.Run()
+	if err != nil {
+		log.Fatalf("Failed to connect: %v", err)
+	}
+}
+
 func transmitCmd(cmd daemon.Cmd, resp any) error {
 	conn, err := daemon.Connect()
 	if err != nil {
@@ -225,4 +268,5 @@ func printUsage() {
 	fmt.Println("  boring list,l                        List tunnels")
 	fmt.Println("  boring open,o <name1> [<name2> ...]  Open specified tunnel(s)")
 	fmt.Println("  boring close,c <name1> [<name2> ...] Close specified tunnel(s)")
+	fmt.Println("  boring connect <name>                Connect to specified tunnel via SSH")
 }
