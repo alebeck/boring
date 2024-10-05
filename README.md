@@ -55,3 +55,4 @@ Get one of the pre-built binaries from the [releases page](https://github.com/al
 git clone https://github.com/alebeck/boring && cd boring
 ./build.sh
 ```
+Currently only supports macOS and Linux.
