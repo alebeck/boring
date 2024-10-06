@@ -1,6 +1,7 @@
 # The `boring` tunnel manager
 
-![Static Badge](https://img.shields.io/badge/build-passing-green?) ![Static Badge](https://img.shields.io/badge/release-0.4.0-orange?) ![Static Badge](https://img.shields.io/badge/license-MIT-blue?)
+![Static Badge](https://img.shields.io/badge/build-passing-green?) ![GitHub Release](https://img.shields.io/github/v/release/alebeck/boring?color=orange)
+ ![Static Badge](https://img.shields.io/badge/license-MIT-blue?)
 
 A simple & reliable command line SSH tunnel manager.
 
