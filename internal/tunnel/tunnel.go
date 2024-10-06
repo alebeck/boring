@@ -92,7 +92,6 @@ func (t *Tunnel) handleLocalConns() {
 	defer t.client.Close()
 
 	for {
-		// Only handle one connection at a time
 		local, err := t.listener.Accept()
 		if err != nil {
 			log.Errorf("could not accept: %v", err)
@@ -105,7 +104,7 @@ func (t *Tunnel) handleLocalConns() {
 			return
 		}
 
-		runTunnel(local, remote)
+		go runTunnel(local, remote)
 	}
 }
 
