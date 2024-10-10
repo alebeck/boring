@@ -102,7 +102,7 @@ func controlTunnels(names []string, kind daemon.CmdKind) {
 			if kind == daemon.Open {
 				openTunnel(name, conf)
 			} else if kind == daemon.Close {
-				closeTunnel(name, conf)
+				closeTunnel(name)
 			} else {
 				log.Errorf("Unknown command: %v", kind)
 			}
@@ -110,7 +110,7 @@ func controlTunnels(names []string, kind daemon.CmdKind) {
 		}()
 	}
 
-	for _ = range names {
+	for range names {
 		<-done
 	}
 }
@@ -138,7 +138,7 @@ func openTunnel(name string, conf *config.Config) {
 	}
 }
 
-func closeTunnel(name string, conf *config.Config) {
+func closeTunnel(name string) {
 	// The daemon only needs the name for closing. In cases where the
 	// config has changed, the name is all we have about the tunnel anyway.
 	t := tunnel.Tunnel{Name: name}
