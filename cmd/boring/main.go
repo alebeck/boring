@@ -2,10 +2,13 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/alebeck/boring/internal/config"
 	"github.com/alebeck/boring/internal/daemon"
@@ -13,6 +16,9 @@ import (
 	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/table"
 	"github.com/alebeck/boring/internal/tunnel"
+
+	"github.com/creack/pty"
+	"golang.org/x/term"
 )
 
 func main() {
@@ -222,7 +228,10 @@ func connectTunnel(name string) {
 
 	// Extract hostname and port from the tunnel configuration
 	hostname := t.Host
-	port := strings.Split(t.RemoteAddress, ":")[1] // Assuming RemoteAddress is in the format "host:port"
+	port := "22" // Default SSH port
+	if strings.Contains(t.RemoteAddress, ":") {
+		port = strings.Split(t.RemoteAddress, ":")[1]
+	}
 
 	// Check if User is available in the tunnel configuration
 	user := "root" // Default user if not specified
@@ -231,18 +240,38 @@ func connectTunnel(name string) {
 	}
 
 	// Construct the SSH command
-	cmd := exec.Command("ssh", fmt.Sprintf("%s@%s", user, hostname), "-p", port)
+	sshArgs := []string{fmt.Sprintf("%s@%s", user, hostname), "-p", port}
+	cmd := exec.Command("ssh", sshArgs...)
 
-	// Set up command to use the current terminal
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	// Run the command
-	err = cmd.Run()
+	// Start the command with a pty
+	ptmx, err := pty.Start(cmd)
 	if err != nil {
-		log.Fatalf("Failed to connect: %v", err)
+		log.Fatalf("Failed to start ssh command: %v", err)
 	}
+	defer func() { _ = ptmx.Close() }() // Best effort.
+
+	// Handle pty size
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGWINCH)
+	go func() {
+		for range ch {
+			if err := pty.InheritSize(os.Stdin, ptmx); err != nil {
+				log.Errorf("Error resizing pty: %v", err)
+			}
+		}
+	}()
+	ch <- syscall.SIGWINCH // Initial resize.
+
+	// Set stdin in raw mode
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		log.Fatalf("Failed to set raw terminal: %v", err)
+	}
+	defer func() { _ = term.Restore(int(os.Stdin.Fd()), oldState) }() // Best effort.
+
+	// Copy input/output
+	go func() { _, _ = io.Copy(ptmx, os.Stdin) }()
+	_, _ = io.Copy(os.Stdout, ptmx)
 }
 
 func transmitCmd(cmd daemon.Cmd, resp any) error {
