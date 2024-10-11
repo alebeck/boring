@@ -45,11 +45,11 @@ func main() {
 		controlTunnels(os.Args[2:], daemon.Close)
 	case "list", "l":
 		listTunnels()
-	case "connect":
+	case "ssh":
 		if len(os.Args) < 3 {
-			log.Fatalf("'connect' requires a 'name' argument.")
+			log.Fatalf("'ssh' requires a 'name' argument.")
 		}
-		connectTunnel(os.Args[2])
+		sshToTunnel(os.Args[2])
 	default:
 		fmt.Println("Unknown command:", os.Args[1])
 		printUsage()
@@ -237,10 +237,10 @@ func printUsage() {
 	fmt.Println("  boring list,l                        List tunnels")
 	fmt.Println("  boring open,o <name1> [<name2> ...]  Open specified tunnel(s)")
 	fmt.Println("  boring close,c <name1> [<name2> ...] Close specified tunnel(s)")
-	fmt.Println("  boring connect <name> [-t]           Connect to specified tunnel via SSH.  -t starts/resumes tmux.")
+	fmt.Println("  boring ssh <name> [-t]               SSH to specified tunnel.  -t starts/resumes tmux.")
 }
 
-func connectTunnel(name string) {
+func sshToTunnel(name string) {
 	conf, err := prepare()
 	if err != nil {
 		log.Fatalf(err.Error())
