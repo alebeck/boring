@@ -34,15 +34,25 @@ func main() {
 
 	switch os.Args[1] {
 	case "open", "o":
-		if len(os.Args) < 3 {
-			log.Fatalf("'open' requires at least one 'name' argument.")
+		if len(os.Args) == 3 && os.Args[2] == "-a" {
+			// Open all tunnels
+			openAllTunnels()
+		} else if len(os.Args) < 3 {
+			log.Fatalf("'open' requires at least one 'name' argument or '-a' to open all tunnels.")
+		} else {
+			// Open specific tunnels
+			controlTunnels(os.Args[2:], daemon.Open)
 		}
-		controlTunnels(os.Args[2:], daemon.Open)
 	case "close", "c":
-		if len(os.Args) < 3 {
-			log.Fatalf("'close' requires at least one 'name' argument.")
+		if len(os.Args) == 3 && os.Args[2] == "-a" {
+			// Close all tunnels
+			closeAllTunnels()
+		} else if len(os.Args) < 3 {
+			log.Fatalf("'close' requires at least one 'name' argument or '-a' to close all tunnels.")
+		} else {
+			// Close specific tunnels
+			controlTunnels(os.Args[2:], daemon.Close)
 		}
-		controlTunnels(os.Args[2:], daemon.Close)
 	case "list", "l":
 		listTunnels()
 	case "ssh":
@@ -55,6 +65,48 @@ func main() {
 		printUsage()
 		os.Exit(1)
 	}
+}
+
+func closeAllTunnels() {
+	conf, err := prepare()
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+
+	// Extract all tunnel names from the configuration
+	var tunnelNames []string
+	for _, tunnel := range conf.Tunnels {
+		tunnelNames = append(tunnelNames, tunnel.Name)
+	}
+
+	if len(tunnelNames) == 0 {
+		log.Infof("No tunnels found in the configuration.")
+		return
+	}
+
+	// Close all tunnels
+	controlTunnels(tunnelNames, daemon.Close)
+}
+
+func openAllTunnels() {
+	conf, err := prepare()
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+
+	// Extract all tunnel names from the configuration
+	var tunnelNames []string
+	for _, tunnel := range conf.Tunnels {
+		tunnelNames = append(tunnelNames, tunnel.Name)
+	}
+
+	if len(tunnelNames) == 0 {
+		log.Infof("No tunnels found in the configuration.")
+		return
+	}
+
+	// Open all tunnels
+	controlTunnels(tunnelNames, daemon.Open)
 }
 
 // prepare loads the configuration and ensures the daemon is running
