@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -17,7 +18,6 @@ const (
 	defaultSock    = "/tmp/boringd.sock"
 	defaultLogFile = "/tmp/boringd.log"
 	initWait       = 2 * time.Millisecond
-	startTimeout   = 2 * time.Second
 )
 
 type CmdKind int
@@ -67,17 +67,15 @@ type Resp struct {
 }
 
 // Ensure starts the daemon if it is not already running.
-// This function is blocking.
-func Ensure() error {
-	timer := time.After(startTimeout)
+func Ensure(ctx context.Context) error {
 	starting := false
-	sleepTime := initWait
+	waitTime := time.Duration(0.)
 
 	for {
 		select {
-		case <-timer:
-			return fmt.Errorf("Daemon was not responsive after %v", startTimeout)
-		default:
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(waitTime):
 			if conn, err := Connect(); err == nil {
 				go func() { conn.Close() }()
 				return nil
@@ -88,8 +86,11 @@ func Ensure() error {
 				}
 				starting = true
 			}
-			time.Sleep(sleepTime)
-			sleepTime *= 2 // Exponential backoff
+			if waitTime == 0. {
+				waitTime = initWait
+			} else {
+				waitTime *= 2 // Exponential backoff
+			}
 		}
 	}
 }

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"slices"
+	"time"
 
 	"github.com/alebeck/boring/internal/config"
 	"github.com/alebeck/boring/internal/daemon"
@@ -11,7 +13,10 @@ import (
 	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/table"
 	"github.com/alebeck/boring/internal/tunnel"
+	"golang.org/x/sync/errgroup"
 )
+
+const daemonTimeout = 2 * time.Second
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == daemon.Flag {
@@ -48,41 +53,37 @@ func main() {
 // prepare loads the configuration and ensures the daemon is running
 func prepare() (*config.Config, error) {
 	var conf *config.Config
-	errs := make(chan error, 2)
+	ctx, cancel := context.WithTimeout(context.Background(), daemonTimeout)
+	g, ctx := errgroup.WithContext(ctx)
+	defer cancel()
 
-	go func() {
+	g.Go(func() error {
 		var err error
 		// Check if config file exists, otherwise we can create it
 		if _, statErr := os.Stat(config.FileName); statErr != nil {
 			var f *os.File
 			if f, err = os.Create(config.FileName); err != nil {
-				errs <- fmt.Errorf("could not create config file: %v", err)
-				return
+				return fmt.Errorf("could not create config file: %v", err)
 			}
 			f.Close()
 			log.Infof("Created boring config file: %s", config.FileName)
 		}
-		conf, err = config.LoadConfig()
-		if err != nil {
-			err = fmt.Errorf("Could not load configuration: %v", err)
+		if conf, err = config.LoadConfig(); err != nil {
+			return fmt.Errorf("Could not load configuration: %v", err)
 		}
-		errs <- err
-	}()
+		return nil
+	})
 
-	go func() {
-		err := daemon.Ensure()
-		if err != nil {
-			err = fmt.Errorf("Could not start daemon: %v", err)
+	g.Go(func() error {
+		if err := daemon.Ensure(ctx); err != nil {
+			return fmt.Errorf("Could not start daemon: %v", err)
 		}
-		errs <- err
-	}()
+		return nil
+	})
 
-	for range 2 {
-		if err := <-errs; err != nil {
-			return nil, err
-		}
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
-
 	return conf, nil
 }
 
