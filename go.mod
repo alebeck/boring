@@ -8,4 +8,7 @@ require (
 	golang.org/x/crypto v0.27.0
 )
 
-require golang.org/x/sys v0.25.0 // indirect
+require (
+	github.com/adrg/xdg v0.5.0 // indirect
+	golang.org/x/sys v0.25.0 // indirect
+)
