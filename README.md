@@ -24,7 +24,13 @@ Usage:
 ```
 
 ## Configuration
-By default, `boring` reads its configuration from `~/.boring.toml`. The configuration is a simple TOML file describing your tunnels:
+
+The config file can be created in the locations below in order of precedence:
+1. The `BORING_CONFIG` environmental variable can be used to set a custom path
+2. `$XDG_CONFIG_HOME/boring/boring.toml`
+3. `~/.boring.toml`
+
+The configuration is a simple TOML file describing your tunnels:
 
 ```toml
 # simple tunnel

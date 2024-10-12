@@ -5,25 +5,34 @@ import (
 	"os"
 
 	"github.com/BurntSushi/toml"
+	"github.com/adrg/xdg"
 	"github.com/alebeck/boring/internal/paths"
 	"github.com/alebeck/boring/internal/tunnel"
 )
 
-const defaultFileName = "~/.boring.toml"
-
 var FileName string
 
-// Config represents the application configuration as parsed from ./boring.toml
+// Config represents the application configuration as parsed from $XDG_CONFIG_HOME, ~/.boring.toml or $BORING_CONFIG
 type Config struct {
 	Tunnels    []tunnel.Tunnel           `toml:"tunnels"`
 	TunnelsMap map[string]*tunnel.Tunnel `toml:"-"`
 }
 
 func init() {
-	if FileName = os.Getenv("BORING_CONFIG"); FileName == "" {
-		FileName = defaultFileName
+	XDGconfigPath, err := xdg.ConfigFile("boring/config.toml")
+	if err != nil {
+		fmt.Errorf(
+			"Failed to create config in $XDG_CONFIG_HOME\n %v \n Checking for $BORING_CONFIG and then falling back to ~/.boring.toml",
+		)
 	}
-	FileName = paths.ReplaceTilde(FileName)
+
+	if FileName = os.Getenv("BORING_CONFIG"); FileName == "" {
+		FileName = XDGconfigPath
+		defaultFileName := paths.ReplaceTilde("~/.boring.toml")
+		if _, err := os.Stat(defaultFileName); err == nil {
+			FileName = defaultFileName
+		}
+	}
 }
 
 // LoadConfig parses the boring configuration file
