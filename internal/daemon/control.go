@@ -5,19 +5,17 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
-	"syscall"
+	"path/filepath"
 	"time"
 
-	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/tunnel"
 )
 
 const (
-	Flag           = "--daemon"
-	defaultSock    = "/tmp/boringd.sock"
-	defaultLogFile = "/tmp/boringd.log"
-	initWait       = 2 * time.Millisecond
+	Flag        = "--daemon"
+	sockName    = "boringd.sock"
+	logFileName = "boringd.log"
+	initWait    = 2 * time.Millisecond
 )
 
 type CmdKind int
@@ -40,10 +38,10 @@ var sock, logFile, executableFile string
 
 func init() {
 	if sock = os.Getenv("BORING_SOCK"); sock == "" {
-		sock = defaultSock
+		sock = filepath.Join(os.TempDir(), sockName)
 	}
 	if logFile = os.Getenv("BORING_LOG_FILE"); logFile == "" {
-		logFile = defaultLogFile
+		logFile = filepath.Join(os.TempDir(), logFileName)
 	}
 }
 
@@ -104,13 +102,8 @@ func startDaemon() error {
 	if err != nil {
 		return fmt.Errorf("could not determine executable path: %v", err)
 	}
-
-	cmd := exec.Command(ex, Flag)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err = cmd.Start(); err != nil {
+	if err = runDaemonized(ex, Flag); err != nil {
 		return err
 	}
-
-	log.Debugf("Daemon started with PID %d", cmd.Process.Pid)
 	return nil
 }
