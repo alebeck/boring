@@ -69,13 +69,14 @@ type Resp struct {
 // Ensure starts the daemon if it is not already running.
 func Ensure(ctx context.Context) error {
 	starting := false
-	waitTime := time.Duration(0.)
+	wait := time.NewTimer(0.)
+	waitTime := initWait
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(waitTime):
+		case <-wait.C:
 			if conn, err := Connect(); err == nil {
 				go func() { conn.Close() }()
 				return nil
@@ -86,11 +87,8 @@ func Ensure(ctx context.Context) error {
 				}
 				starting = true
 			}
-			if waitTime == 0. {
-				waitTime = initWait
-			} else {
-				waitTime *= 2 // Exponential backoff
-			}
+			wait.Reset(waitTime)
+			waitTime *= 2 
 		}
 	}
 }
