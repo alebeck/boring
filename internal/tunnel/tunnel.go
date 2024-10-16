@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/alebeck/boring/internal/log"
@@ -11,26 +12,27 @@ import (
 )
 
 const (
-	reconnectWait    = 2 * time.Millisecond
-	reconnectTimeout = 10 * time.Minute
+	reconnectWait     = 2 * time.Millisecond
+	reconnectTimeout  = 10 * time.Minute
+	keepAliveInterval = 2 * time.Minute
 )
 
-// Tunnel represents an SSH tunnel configuration and management
 type Tunnel struct {
-	Name          string        `toml:"name" json:"name"`
-	LocalAddress  StringOrInt   `toml:"local" json:"local"`
-	RemoteAddress string        `toml:"remote" json:"remote"`
-	Host          string        `toml:"host" json:"host"`
-	User          string        `toml:"user" json:"user"`
-	IdentityFile  string        `toml:"identity" json:"identity"`
-	Port          int           `toml:"port" json:"port"`
-	Mode          Mode          `toml:"mode" json:"mode"`
-	Status        Status        `toml:"-" json:"status"`
-	Closed        chan struct{} `toml:"-" json:"-"`
-	rc            *runConfig    `toml:"-" json:"-"`
-	client        *ssh.Client   `toml:"-" json:"-"`
-	listener      net.Listener  `toml:"-" json:"-"`
-	stop          chan struct{} `toml:"-" json:"-"`
+	Name          string         `toml:"name" json:"name"`
+	LocalAddress  StringOrInt    `toml:"local" json:"local"`
+	RemoteAddress string         `toml:"remote" json:"remote"`
+	Host          string         `toml:"host" json:"host"`
+	User          string         `toml:"user" json:"user"`
+	IdentityFile  string         `toml:"identity" json:"identity"`
+	Port          int            `toml:"port" json:"port"`
+	Mode          Mode           `toml:"mode" json:"mode"`
+	Status        Status         `toml:"-" json:"status"`
+	Closed        chan struct{}  `toml:"-" json:"-"`
+	rc            *runConfig     `toml:"-" json:"-"`
+	client        *ssh.Client    `toml:"-" json:"-"`
+	listener      net.Listener   `toml:"-" json:"-"`
+	stop          chan struct{}  `toml:"-" json:"-"`
+	wg            sync.WaitGroup `toml:"-" json:"-"`
 }
 
 func (t *Tunnel) Open() error {
@@ -54,8 +56,7 @@ func (t *Tunnel) Open() error {
 		t.Closed = make(chan struct{})
 	}
 
-	go t.watch()
-	go t.handleConns()
+	go t.run()
 
 	log.Infof("Opened tunnel %v...", t.Name)
 	t.Status = Open
@@ -79,7 +80,55 @@ func (t *Tunnel) setupListener() error {
 	return err
 }
 
+func (t *Tunnel) run() {
+	disconn := make(chan struct{})
+	go func() {
+		t.client.Wait()
+		close(disconn)
+	}()
+
+	go t.waitFor(func() { t.keepAlive(disconn) })
+	go t.waitFor(func() { t.handleConns() })
+
+	stopped := false
+	select {
+	case <-t.stop:
+		log.Infof("Received stop signal for %v...", t.Name)
+		stopped = true
+		t.client.Close()
+	case <-disconn:
+	}
+	t.listener.Close()
+	t.wg.Wait()
+	if !stopped && t.reconnectLoop() == nil {
+		return
+	}
+	t.Status = Closed
+	close(t.Closed)
+}
+
+func (t *Tunnel) keepAlive(cancel chan struct{}) {
+	for {
+		select {
+		case <-cancel:
+			return
+		case <-time.After(keepAliveInterval):
+			_, _, err := t.client.SendRequest("keepalive@golang.org", true, nil)
+			if err != nil {
+				log.Errorf("Error sending keepalive for tunnel %v: %v", t.Name, err)
+				// Close the client, this triggers the reconnection logic
+				t.client.Close()
+				return
+			}
+			log.Debugf("Sent keep-alive")
+		}
+	}
+}
+
 func (t *Tunnel) handleConns() {
+	defer t.listener.Close()
+	defer t.client.Close()
+
 	if t.Mode == Local {
 		t.handleLocalConns()
 	} else {
@@ -88,9 +137,6 @@ func (t *Tunnel) handleConns() {
 }
 
 func (t *Tunnel) handleLocalConns() {
-	defer t.listener.Close()
-	defer t.client.Close()
-
 	for {
 		local, err := t.listener.Accept()
 		if err != nil {
@@ -104,32 +150,29 @@ func (t *Tunnel) handleLocalConns() {
 			return
 		}
 
-		go runTunnel(local, remote)
+		go t.waitFor(func() { t.tunnel(local, remote) })
 	}
 }
 
 func (t *Tunnel) handleRemoteConns() {
-	defer t.listener.Close()
-	defer t.client.Close()
-
 	for {
 		remote, err := t.listener.Accept()
 		if err != nil {
 			log.Errorf("could not accept on remote: %v", err)
 			return
 		}
-		go func() {
+		go t.waitFor(func() {
 			local, err := net.Dial(t.rc.localNet, t.rc.localAddress)
 			if err != nil {
 				log.Errorf("could not dial locally: %v", err)
 				return
 			}
-			runTunnel(local, remote)
-		}()
+			t.tunnel(local, remote)
+		})
 	}
 }
 
-func runTunnel(local, remote net.Conn) {
+func (t *Tunnel) tunnel(local, remote net.Conn) {
 	defer local.Close()
 	defer remote.Close()
 	done := make(chan struct{}, 2)
@@ -145,28 +188,6 @@ func runTunnel(local, remote net.Conn) {
 	}()
 
 	<-done
-}
-
-func (t *Tunnel) watch() {
-	clientClosed := make(chan struct{}, 1)
-	go func() {
-		t.client.Wait()
-		t.listener.Close()
-		clientClosed <- struct{}{}
-	}()
-
-	select {
-	case <-clientClosed:
-		if err := t.reconnectLoop(); err != nil {
-			t.Status = Closed
-			close(t.Closed)
-		}
-	case <-t.stop:
-		log.Infof("Received stop signal for %v...", t.Name)
-		t.client.Close() // Will also close listener
-		t.Status = Closed
-		close(t.Closed)
-	}
 }
 
 func (t *Tunnel) reconnectLoop() error {
@@ -199,6 +220,14 @@ func (t *Tunnel) Close() error {
 	if t.Status == Closed {
 		return fmt.Errorf("trying to close a closed tunnel")
 	}
-	t.stop <- struct{}{}
+	close(t.stop)
 	return nil
+}
+
+// Logic registered with waitFor will be waited for upon tunnel closing
+// and reconnecting.
+func (t *Tunnel) waitFor(f func()) {
+	t.wg.Add(1)
+	defer t.wg.Done()
+	f()
 }

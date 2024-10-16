@@ -57,8 +57,11 @@ func (w *logWriter) tryRotate() {
 
 func timestamp() string {
 	currentTime := time.Now()
-	timestamp := "[" + currentTime.Format("15:04:05") + "]"
-	return timestamp
+	format := "15:04:05"
+	if debug {
+		format = "15:04:05.000"
+	}
+	return "[" + currentTime.Format(format) + "]"
 }
 
 func Debugf(format string, a ...any) {
