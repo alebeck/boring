@@ -18,6 +18,8 @@ import (
 
 const daemonTimeout = 2 * time.Second
 
+var version, commit string
+
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == daemon.Flag {
 		// Run in daemon mode
@@ -222,6 +224,15 @@ func transmitCmd(cmd daemon.Cmd, resp any) error {
 }
 
 func printUsage() {
+	v := version
+	if v == "" {
+		v = "snapshot"
+		if commit != "" {
+			v += fmt.Sprintf(" (#%s)", commit)
+		}
+	}
+
+	fmt.Printf("boring %s\n", v)
 	fmt.Println("Usage:")
 	fmt.Println("  boring list,l                        List tunnels")
 	fmt.Println("  boring open,o <name1> [<name2> ...]  Open specified tunnel(s)")
