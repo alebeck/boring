@@ -20,7 +20,7 @@ const (
 type Tunnel struct {
 	Name          string         `toml:"name" json:"name"`
 	LocalAddress  StringOrInt    `toml:"local" json:"local"`
-	RemoteAddress string         `toml:"remote" json:"remote"`
+	RemoteAddress StringOrInt    `toml:"remote" json:"remote"`
 	Host          string         `toml:"host" json:"host"`
 	User          string         `toml:"user" json:"user"`
 	IdentityFile  string         `toml:"identity" json:"identity"`

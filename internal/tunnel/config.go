@@ -62,16 +62,17 @@ func (t *Tunnel) makeRunConfig() error {
 
 	// Make SSH client config
 	if err := rc.makeClientConfig(); err != nil {
-		return fmt.Errorf("could not make client config: %v", err)
+		return fmt.Errorf("client config: %v", err)
 	}
 
-	rc.remoteAddress = t.RemoteAddress
-	rc.remoteNet = netType(rc.remoteAddress)
-
-	rc.localAddress = string(t.LocalAddress)
-	rc.localNet = netType(rc.localAddress)
-	if rc.localNet == "tcp" && !strings.Contains(rc.localAddress, ":") {
-		rc.localAddress = "localhost:" + rc.localAddress
+	var err error
+	rc.remoteAddress, rc.remoteNet, err = parseAddr(string(t.RemoteAddress), t.Mode == Remote)
+	if err != nil {
+		return fmt.Errorf("remote address: %v", err)
+	}
+	rc.localAddress, rc.localNet, err = parseAddr(string(t.LocalAddress), t.Mode == Local)
+	if err != nil {
+		return fmt.Errorf("local address: %v", err)
 	}
 
 	t.rc = &rc
@@ -194,4 +195,19 @@ func netType(addr string) string {
 		return "tcp"
 	}
 	return "unix"
+}
+
+func parseAddr(addr string, allowShort bool) (string, string, error) {
+	if _, err := strconv.Atoi(addr); err == nil {
+		// addr is a tcp port number
+		if !allowShort {
+			return "", "", fmt.Errorf("bad remote forwarding specification")
+		}
+		return "localhost:" + addr, "tcp", nil
+	} else if strings.Contains(addr, ":") {
+		// addr is a full tcp address
+		return addr, "tcp", nil
+	}
+	// it's a unix socket address
+	return addr, "unix", nil
 }
