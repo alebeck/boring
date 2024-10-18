@@ -88,7 +88,7 @@ func Ensure(ctx context.Context) error {
 				starting = true
 			}
 			wait.Reset(waitTime)
-			waitTime *= 2 
+			waitTime *= 2
 		}
 	}
 }
