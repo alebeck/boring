@@ -20,7 +20,6 @@ const sshConnTimeout = 10 * time.Second
 
 var defaultKeys = []string{"~/.ssh/id_rsa", "~/.ssh/id_ecdsa", "~/.ssh/id_ed25519"}
 
-// TODO: embed into Tunnel?
 type runConfig struct {
 	localAddress    string
 	remoteAddress   string
@@ -31,6 +30,10 @@ type runConfig struct {
 	port            int
 	identityFiles   []string
 	knownHostsFiles []string
+	ciphers         []string
+	macs            []string
+	hostKeyAlgos    []string
+	kexAlgos        []string
 	clientConfig    *ssh.ClientConfig
 }
 
@@ -79,20 +82,29 @@ func (t *Tunnel) makeRunConfig() error {
 	return nil
 }
 
-// TODO: respect Cipher(s), HostKeyAlgorithms, KexAlgorithms, MACs
 func (rc *runConfig) parseSSHConf(alias string) {
 	rc.identityFiles = ssh_config.GetAll(alias, "IdentityFile")
 
-	// Known hosts
 	hosts := strings.Split(ssh_config.Get(alias, "GlobalKnownHostsFile"), " ")
-	for _, u := range ssh_config.GetAll(alias, "UserKnownHostsFile") {
-		hosts = append(hosts, strings.Split(u, " ")...)
-	}
+	hosts = append(hosts, getAllMulti(alias, "UserKnownHostsFile", " ")...)
 	rc.knownHostsFiles = hosts
+
+	rc.ciphers = getAllMulti(alias, "Ciphers", ",")
+	rc.macs = getAllMulti(alias, "MACs", ",")
+	rc.hostKeyAlgos = getAllMulti(alias, "HostKeyAlgorithms", ",")
+	rc.kexAlgos = getAllMulti(alias, "KexAlgorithms", ",")
 
 	rc.user = ssh_config.Get(alias, "User")
 	rc.port, _ = strconv.Atoi(ssh_config.Get(alias, "Port"))
 	rc.hostName = ssh_config.Get(alias, "HostName")
+}
+
+func getAllMulti(alias, key, sep string) []string {
+	var vs []string
+	for _, v := range ssh_config.GetAll(alias, key) {
+		vs = append(vs, strings.Split(v, sep)...)
+	}
+	return vs
 }
 
 func validate(rc *runConfig) error {
@@ -152,12 +164,16 @@ func (rc *runConfig) makeClientConfig() error {
 	}
 
 	rc.clientConfig = &ssh.ClientConfig{
-		User: rc.user,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signers...),
+		Config: ssh.Config{
+			Ciphers:      rc.ciphers,
+			KeyExchanges: rc.kexAlgos,
+			MACs:         rc.macs,
 		},
-		HostKeyCallback: knownHostsCallback,
-		Timeout:         sshConnTimeout,
+		User:              rc.user,
+		Auth:              []ssh.AuthMethod{ssh.PublicKeys(signers...)},
+		HostKeyAlgorithms: rc.hostKeyAlgos,
+		HostKeyCallback:   knownHostsCallback,
+		Timeout:           sshConnTimeout,
 	}
 	return nil
 }
@@ -184,17 +200,6 @@ func getAgentSigners() ([]ssh.Signer, error) {
 	}
 	c := agent.NewClient(sock)
 	return c.Signers()
-}
-
-func netType(addr string) string {
-	if strings.Contains(addr, ":") {
-		return "tcp"
-	}
-	if _, err := strconv.Atoi(addr); err == nil {
-		// It's a port
-		return "tcp"
-	}
-	return "unix"
 }
 
 func parseAddr(addr string, allowShort bool) (string, string, error) {
