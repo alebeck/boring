@@ -77,8 +77,8 @@ func cleanup(s *state, wg *sync.WaitGroup) {
 }
 
 func setupLogger(path string) {
-	logFile, err := os.OpenFile(path,
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	logFile, err := os.OpenFile(
+		path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		log.Fatalf("Failed to open log file: %v", err)
 	}
