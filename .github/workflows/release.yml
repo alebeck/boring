@@ -35,3 +35,4 @@ jobs:
           file_glob: true
           tag: ${{ github.ref }}
           body: "Automatic build release for version ${{ github.ref_name }}"
+          draft: true
