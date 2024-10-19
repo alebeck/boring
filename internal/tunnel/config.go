@@ -10,7 +10,6 @@ import (
 
 	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/paths"
-	"github.com/kevinburke/ssh_config"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
@@ -41,7 +40,9 @@ func (t *Tunnel) makeRunConfig() error {
 	rc := runConfig{}
 
 	// Fill in rc's values based on ssh config
-	rc.parseSSHConf(t.Host)
+	if err := rc.parseSSHConf(t.Host); err != nil {
+		return fmt.Errorf("could not parse SSH config: %v", err)
+	}
 
 	// Override values which were manually set by user
 	if t.User != "" {
@@ -82,29 +83,29 @@ func (t *Tunnel) makeRunConfig() error {
 	return nil
 }
 
-func (rc *runConfig) parseSSHConf(alias string) {
-	rc.identityFiles = ssh_config.GetAll(alias, "IdentityFile")
-
-	hosts := strings.Split(ssh_config.Get(alias, "GlobalKnownHostsFile"), " ")
-	hosts = append(hosts, getAllMulti(alias, "UserKnownHostsFile", " ")...)
-	rc.knownHostsFiles = hosts
-
-	rc.ciphers = getAllMulti(alias, "Ciphers", ",")
-	rc.macs = getAllMulti(alias, "MACs", ",")
-	rc.hostKeyAlgos = getAllMulti(alias, "HostKeyAlgorithms", ",")
-	rc.kexAlgos = getAllMulti(alias, "KexAlgorithms", ",")
-
-	rc.user = ssh_config.Get(alias, "User")
-	rc.port, _ = strconv.Atoi(ssh_config.Get(alias, "Port"))
-	rc.hostName = ssh_config.Get(alias, "HostName")
-}
-
-func getAllMulti(alias, key, sep string) []string {
-	var vs []string
-	for _, v := range ssh_config.GetAll(alias, key) {
-		vs = append(vs, strings.Split(v, sep)...)
+func (rc *runConfig) parseSSHConf(alias string) error {
+	c, err := makeSSHConfig()
+	if err != nil {
+		return err
 	}
-	return vs
+
+	rc.identityFiles = c.GetAll(alias, "IdentityFile")
+
+	hosts := c.GetAll(alias, "GlobalKnownHostsFile")
+	hosts = append(hosts, c.GetAll(alias, "UserKnownHostsFile")...)
+	for _, h := range hosts {
+		rc.knownHostsFiles = append(rc.knownHostsFiles, strings.Split(h, " ")...)
+	}
+
+	rc.ciphers = split(c.Get(alias, "Ciphers"))
+	rc.macs = split(c.Get(alias, "MACs"))
+	rc.hostKeyAlgos = split(c.Get(alias, "HostKeyAlgorithms"))
+	rc.kexAlgos = split(c.Get(alias, "KexAlgorithms"))
+
+	rc.user = c.Get(alias, "User")
+	rc.port, _ = strconv.Atoi(c.Get(alias, "Port"))
+	rc.hostName = c.Get(alias, "HostName")
+	return nil
 }
 
 func validate(rc *runConfig) error {
@@ -150,6 +151,7 @@ func (rc *runConfig) makeClientConfig() error {
 			return fmt.Errorf("no key files found.")
 		}
 	}
+	log.Debugf("Trying %d key file(s)", len(signers))
 
 	var hosts []string
 	for _, k := range rc.knownHostsFiles {
@@ -215,4 +217,8 @@ func parseAddr(addr string, allowShort bool) (string, string, error) {
 	}
 	// it's a unix socket address
 	return addr, "unix", nil
+}
+
+func split(s string) []string {
+	return strings.Split(s, ",")
 }
