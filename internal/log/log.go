@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -51,8 +50,9 @@ func (w *logWriter) tryRotate() {
 		// Not ripe for rotation
 		return
 	}
-	syscall.Ftruncate(int(f.Fd()), 0)
-	f.Seek(0, 0)
+	if f.Truncate(0) == nil {
+		f.Seek(0, 0)
+	}
 }
 
 func timestamp() string {

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/BurntSushi/toml"
 	"github.com/alebeck/boring/internal/paths"
@@ -23,6 +24,7 @@ func init() {
 	if FileName = os.Getenv("BORING_CONFIG"); FileName == "" {
 		FileName = defaultFileName
 	}
+	FileName = filepath.ToSlash(FileName)
 	FileName = paths.ReplaceTilde(FileName)
 }
 
