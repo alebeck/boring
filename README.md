@@ -9,10 +9,10 @@ A simple & reliable command line SSH tunnel manager.
 
 ## Features
 * Ultra lightweight and fast
-* Local and remote tunnels
+* Local, remote and dynamic (SOCKS5) port forwarding
 * Compatible with SSH config and `ssh-agent`
 * Supports Unix sockets
-* Automatic reconnection
+* Automatic reconnection and keep-alives
 * Human-friendly configuration via TOML
 
 ## Usage
@@ -46,7 +46,7 @@ identity = "~/.ssh/id_prod"  # will try default ones if not set
 # ... more tunnels
 ```
 
-Currently, supported options are: `name`, `local`, `remote`, `host`, `user`, `identity`, `port`, and `mode`. `host` either describes a host which to match SSH configs to, or if no matches found, the actual hostname. `mode` can be 'local' for local or 'remote' for remote forwarding, default is 'local'. The location of the config file can be changed by setting the `BORING_CONFIG` environment variable.
+Currently, supported options are: `name`, `local`, `remote`, `host`, `user`, `identity`, `port`, and `mode`. `host` either describes a host which to match SSH configs to, or if no matches found, the actual hostname. `mode` can be 'local' for local, 'remote' for remote and "socks" for dynamic forwarding; default is 'local'. The location of the config file can be changed by setting the `BORING_CONFIG` environment variable.
 
 
 ## Installation
@@ -56,4 +56,17 @@ Get one of the pre-built binaries from the [releases page](https://github.com/al
 git clone https://github.com/alebeck/boring && cd boring
 ./build.sh
 ```
-Currently only supports macOS and Linux.
+
+Then, move the binary to a location in your `$PATH`.
+
+<details>
+  <summary>Note for Windows users</summary>
+  Windows is fully supported since release 0.6.0. Users currently have to build from source, which is very easy. Make sure Go >= 1.23.0 is installed and then compile via
+
+  ```batch
+  git clone https://github.com/alebeck/boring && cd boring
+  .\build_win.bat
+  ```
+
+  Then, move the executable to a location in your `%PATH%`.
+</details>

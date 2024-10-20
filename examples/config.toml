@@ -22,3 +22,11 @@ local = "/tmp/serve.sock"
 remote = "/tmp/listen.sock"
 host = "dev-server"
 mode = "remote"
+
+# example of a SOCKS5 proxy; this will setup a SOCKS server at
+# port 9000 and forward all traffic through `dev-server`.
+[[tunnels]]
+name = "dev-proxy"
+local = "9000"
+host = "dev-server"
+mode = "socks"
