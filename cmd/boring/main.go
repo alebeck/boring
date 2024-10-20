@@ -136,7 +136,7 @@ func openTunnel(name string, conf *config.Config) {
 		log.Errorf("Tunnel %v could not be opened: %v", name, resp.Error)
 	} else {
 		log.Infof("Opened tunnel %s: %s %v %s via %s",
-			log.ColorGreen+t.Name+log.ColorReset,
+			log.Green+t.Name+log.Reset,
 			t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
 	}
 }
@@ -155,7 +155,7 @@ func closeTunnel(name string) {
 	if !resp.Success {
 		log.Errorf("Tunnel %v could not be closed: %v", name, resp.Error)
 	} else {
-		log.Infof("Closed tunnel %s", log.ColorGreen+t.Name+log.ColorReset)
+		log.Infof("Closed tunnel %s", log.Green+t.Name+log.Reset)
 	}
 }
 

@@ -4,20 +4,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 )
 
-const (
-	// ANSI escape codes for text colors
-	ColorReset  = "\033[0m"
-	ColorRed    = "\033[31m"
-	ColorGreen  = "\033[32m"
-	ColorYellow = "\033[33m"
-	ColorBlue   = "\033[36m"
-)
-
 const maxFileSize = 128 * 1024 // 128 KiB
+
+// ANSI escape codes
+var Reset, Bold, Red, Green, Yellow, Blue string
 
 var writer io.Writer = &logWriter{inner: os.Stdout}
 var debug = os.Getenv("DEBUG") != ""
@@ -26,6 +21,17 @@ var debug = os.Getenv("DEBUG") != ""
 type logWriter struct {
 	inner io.Writer
 	mutex sync.Mutex
+}
+
+func init() {
+	if runtime.GOOS != "windows" {
+		Reset = "\033[0m"
+		Bold = "\033[1m"
+		Red = "\033[31m"
+		Green = "\033[32m"
+		Yellow = "\033[33m"
+		Blue = "\033[36m"
+	}
 }
 
 // Write implements io.Writer, locking and rotating as needed
@@ -74,22 +80,22 @@ func Debugf(format string, a ...any) {
 
 func Infof(format string, a ...any) {
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(writer, "%s %sINFO%s %s\n", timestamp(), ColorBlue, ColorReset, message)
+	fmt.Fprintf(writer, "%s %sINFO%s %s\n", timestamp(), Blue, Reset, message)
 }
 
 func Warningf(format string, a ...any) {
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(writer, "%s %sWARNING%s %s\n", timestamp(), ColorYellow, ColorReset, message)
+	fmt.Fprintf(writer, "%s %sWARNING%s %s\n", timestamp(), Yellow, Reset, message)
 }
 
 func Errorf(format string, a ...any) {
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(writer, "%s %sERROR%s %s\n", timestamp(), ColorRed, ColorReset, message)
+	fmt.Fprintf(writer, "%s %sERROR%s %s\n", timestamp(), Red, Reset, message)
 }
 
 func Fatalf(format string, a ...any) {
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(writer, "%s %sFATAL%s %s\n", timestamp(), ColorRed, ColorReset, message)
+	fmt.Fprintf(writer, "%s %sFATAL%s %s\n", timestamp(), Red, Reset, message)
 	os.Exit(1)
 }
 

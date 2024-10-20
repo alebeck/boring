@@ -4,13 +4,11 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/alebeck/boring/internal/log"
 )
 
-const (
-	bold  = "\x1b[1m"
-	reset = "\x1b[0m"
-	pad   = 2
-)
+const pad = 2
 
 // Regex to match ANSI escape sequences
 var ansi = regexp.MustCompile(`\x1b\[[0-9;]*m`)
@@ -47,7 +45,7 @@ func (t *Table) AddRow(cols ...any) {
 func (t *Table) Print() {
 	for j, h := range t.header {
 		p := t.lens[j] + pad - length(h)
-		fmt.Print(bold + h + reset + strings.Repeat(" ", p))
+		fmt.Print(log.Bold + h + log.Reset + strings.Repeat(" ", p))
 	}
 	for _, row := range t.data {
 		fmt.Print("\n")
