@@ -10,6 +10,7 @@ type Mode int
 const (
 	Local Mode = iota
 	Remote
+	Socks
 )
 
 func (m *Mode) UnmarshalTOML(data interface{}) error {
@@ -23,6 +24,8 @@ func (m *Mode) UnmarshalTOML(data interface{}) error {
 		*m = Local
 	case "remote", "r", "-r":
 		*m = Remote
+	case "socks":
+		*m = Socks
 	default:
 		return errors.New("invalid mode")
 	}
@@ -31,8 +34,8 @@ func (m *Mode) UnmarshalTOML(data interface{}) error {
 }
 
 func (m Mode) String() string {
-	if m == Local {
-		return "->"
+	if m == Remote {
+		return "<-"
 	}
-	return "<-"
+	return "->"
 }

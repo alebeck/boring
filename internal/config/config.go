@@ -10,7 +10,10 @@ import (
 	"github.com/alebeck/boring/internal/tunnel"
 )
 
-const defaultFileName = "~/.boring.toml"
+const (
+	defaultFileName = "~/.boring.toml"
+	socksLabel      = "[SOCKS5 proxy]"
+)
 
 var FileName string
 
@@ -35,13 +38,22 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("could not decode config file: %v", err)
 	}
 
-	// Create a map of tunnel names to tunnel instances for easy lookup
+	// Create a map of tunnel names to tunnel pointers for easy lookup
 	m := make(map[string]*tunnel.Tunnel)
-	for _, t := range config.Tunnels {
+	for i := range config.Tunnels {
+		t := &config.Tunnels[i]
 		if _, exists := m[t.Name]; exists {
 			return nil, fmt.Errorf("found duplicated tunnel name '%v'", t.Name)
 		}
-		m[t.Name] = &t
+		m[t.Name] = t
+	}
+
+	// Replace the remote address of Socks tunnels by a fixed indicator,
+	// it is not used for anything anyway
+	for _, t := range m {
+		if t.Mode == tunnel.Socks {
+			t.RemoteAddress = socksLabel
+		}
 	}
 
 	config.TunnelsMap = m

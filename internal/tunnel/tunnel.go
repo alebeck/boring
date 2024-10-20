@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alebeck/boring/internal/log"
+	"github.com/armon/go-socks5"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -72,10 +74,10 @@ func (t *Tunnel) setupClient() error {
 
 func (t *Tunnel) setupListener() error {
 	var err error
-	if t.Mode == Local {
-		t.listener, err = net.Listen(t.rc.localNet, t.rc.localAddress)
-	} else {
+	if t.Mode == Remote {
 		t.listener, err = t.client.Listen(t.rc.remoteNet, t.rc.remoteAddress)
+	} else {
+		t.listener, err = net.Listen(t.rc.localNet, t.rc.localAddress)
 	}
 	return err
 }
@@ -129,10 +131,13 @@ func (t *Tunnel) handleConns() {
 	defer t.listener.Close()
 	defer t.client.Close()
 
-	if t.Mode == Local {
+	switch t.Mode {
+	case Local:
 		t.handleLocalConns()
-	} else {
+	case Remote:
 		t.handleRemoteConns()
+	case Socks:
+		t.handleSocks()
 	}
 }
 
@@ -188,6 +193,28 @@ func (t *Tunnel) tunnel(local, remote net.Conn) {
 	}()
 
 	<-done
+}
+
+func (t *Tunnel) handleSocks() {
+	conf := &socks5.Config{
+		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return t.client.Dial(network, addr)
+		},
+	}
+	serv, err := socks5.New(conf)
+	if err != nil {
+		log.Errorf("could not create socks server: %v", err)
+		return
+	}
+
+	for {
+		conn, err := t.listener.Accept()
+		if err != nil {
+			log.Errorf("could not accept: %v", err)
+			return
+		}
+		go t.waitFor(func() { serv.ServeConn(conn) })
+	}
 }
 
 func (t *Tunnel) reconnectLoop() error {
