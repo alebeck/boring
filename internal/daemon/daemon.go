@@ -85,8 +85,22 @@ func setupLogger(path string) {
 	log.SetOutput(logFile)
 }
 
-func setupListener() (net.Listener, error) {
-	return net.Listen("unix", sock)
+func setupListener() (l net.Listener, err error) {
+	l, err = net.Listen("unix", sock)
+	if err == nil {
+		return
+	}
+	// If the daemon was terminated forcefully, the domain socket
+	// may be in a bad state where it exists but doesn't allow binding.
+	// We try to identify this and delete the socket file, if necessary.
+	if _, statErr := os.Stat(sock); statErr == nil {
+		if _, dialErr := net.Dial("unix", sock); dialErr != nil {
+			log.Warningf("Found unresponsive socket, deleting...")
+			os.Remove(sock)
+			l, err = net.Listen("unix", sock)
+		}
+	}
+	return
 }
 
 func handleConnection(s *state, conn net.Conn) {
