@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/alebeck/boring/internal/log"
-	"github.com/armon/go-socks5"
+	"github.com/alebeck/boring/internal/proxy"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -196,15 +196,10 @@ func (t *Tunnel) tunnel(local, remote net.Conn) {
 }
 
 func (t *Tunnel) handleSocks() {
-	conf := &socks5.Config{
-		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+	serv := &proxy.Server{
+		Dialer: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return t.client.Dial(network, addr)
 		},
-	}
-	serv, err := socks5.New(conf)
-	if err != nil {
-		log.Errorf("could not create socks server: %v", err)
-		return
 	}
 
 	for {
