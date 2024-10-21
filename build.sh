@@ -3,10 +3,11 @@
 tag=$(git describe --tags --exact-match 2>/dev/null)
 commit=$(git rev-parse --short HEAD 2>/dev/null)
 
-mkdir -p ./bin
+dir=${1:-./bin}
+mkdir -p $dir
 
 go build \
     -ldflags "-X main.version=$tag -X main.commit=$commit" \
-    -o ./bin/boring \
+    -o $dir/boring \
     ./cmd/boring
 

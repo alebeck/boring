@@ -10,10 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    strategy:
-      matrix:
-        goos: [linux, darwin]
-        goarch: [amd64, arm64]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -22,16 +18,12 @@ jobs:
         with:
           go-version: 1.23
       - name: Build
-        run: |
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o boring ./cmd/boring
-      - name: Compress Binary
-        run: |
-          tar -czvf boring-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz boring
-      - name: Upload binaries to release
+        run: ./build_grid.sh 
+      - name: Release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: boring-*.tar.gz
+          file: ./dist/boring-*.tar.gz
           file_glob: true
           tag: ${{ github.ref }}
           body: "Automatic build release for version ${{ github.ref_name }}"
