@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/user"
 	"strconv"
 	"strings"
 	"time"
@@ -58,6 +59,13 @@ func (t *Tunnel) makeRunConfig() error {
 	// If t.Host could not be resolved from ssh config, take it literally
 	if rc.hostName == "" {
 		rc.hostName = t.Host
+	}
+
+	// Use $USER if still no user specified
+	if rc.user == "" {
+		if u, err := user.Current(); err == nil {
+			rc.user = u.Username
+		}
 	}
 
 	if err := validate(&rc); err != nil {
