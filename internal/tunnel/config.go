@@ -78,11 +78,12 @@ func (t *Tunnel) makeRunConfig() error {
 	}
 
 	var err error
-	rc.remoteAddress, rc.remoteNet, err = parseAddr(string(t.RemoteAddress), t.Mode == Remote)
+	short := t.Mode == Remote || t.Mode == RemoteSocks
+	rc.remoteAddress, rc.remoteNet, err = parseAddr(string(t.RemoteAddress), short)
 	if err != nil {
 		return fmt.Errorf("remote address: %v", err)
 	}
-	rc.localAddress, rc.localNet, err = parseAddr(string(t.LocalAddress), t.Mode == Local)
+	rc.localAddress, rc.localNet, err = parseAddr(string(t.LocalAddress), !short)
 	if err != nil {
 		return fmt.Errorf("local address: %v", err)
 	}

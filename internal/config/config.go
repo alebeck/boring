@@ -12,7 +12,7 @@ import (
 
 const (
 	defaultFileName = "~/.boring.toml"
-	socksLabel      = "[SOCKS5 proxy]"
+	socksLabel      = "[SOCKS]"
 )
 
 var FileName string
@@ -48,11 +48,13 @@ func LoadConfig() (*Config, error) {
 		m[t.Name] = t
 	}
 
-	// Replace the remote address of Socks tunnels by a fixed indicator,
-	// it is not used for anything anyway
+	// Replace the remote address of Socks tunnels and local address of reverse
+	// socks tunnels by a fixed indicator, it is not used for anything anyway
 	for _, t := range m {
 		if t.Mode == tunnel.Socks {
 			t.RemoteAddress = socksLabel
+		} else if t.Mode == tunnel.RemoteSocks {
+			t.LocalAddress = socksLabel
 		}
 	}
 

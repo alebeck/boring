@@ -45,11 +45,11 @@ func (t *Tunnel) Open() error {
 		}
 	}
 
-	if err = t.setupClient(); err != nil {
+	if err = t.makeClient(); err != nil {
 		return fmt.Errorf("could not setup SSH client: %v", err)
 	}
 
-	if err = t.setupListener(); err != nil {
+	if err = t.makeListener(); err != nil {
 		return fmt.Errorf("cannot listen: %v", err)
 	}
 
@@ -65,27 +65,34 @@ func (t *Tunnel) Open() error {
 	return nil
 }
 
-func (t *Tunnel) setupClient() error {
+func (t *Tunnel) makeClient() error {
 	var err error
 	addr := fmt.Sprintf("%v:%v", t.rc.hostName, t.rc.port)
 	t.client, err = ssh.Dial("tcp", addr, t.rc.clientConfig)
 	return err
 }
 
-func (t *Tunnel) setupListener() error {
-	var err error
-	if t.Mode == Remote {
+func (t *Tunnel) makeListener() (err error) {
+	if t.Mode == Remote || t.Mode == RemoteSocks {
 		t.listener, err = t.client.Listen(t.rc.remoteNet, t.rc.remoteAddress)
 	} else {
 		t.listener, err = net.Listen(t.rc.localNet, t.rc.localAddress)
 	}
-	return err
+	return
+}
+
+func (t *Tunnel) dial(network, addr string) (net.Conn, error) {
+	if t.Mode == Remote || t.Mode == RemoteSocks {
+		return net.Dial(network, addr)
+	}
+	return t.client.Dial(network, addr)
 }
 
 func (t *Tunnel) run() {
 	disconn := make(chan struct{})
 	go func() {
 		t.client.Wait()
+		log.Infof("Client closed for %v", t.Name)
 		close(disconn)
 	}()
 
@@ -130,65 +137,47 @@ func (t *Tunnel) keepAlive(cancel chan struct{}) {
 func (t *Tunnel) handleConns() {
 	defer t.listener.Close()
 	defer t.client.Close()
-
-	switch t.Mode {
-	case Local:
-		t.handleLocalConns()
-	case Remote:
-		t.handleRemoteConns()
-	case Socks:
-		t.handleSocks()
+	if t.Mode == Local || t.Mode == Remote {
+		t.handleForward()
+		return
 	}
+	t.handleSocks()
 }
 
-func (t *Tunnel) handleLocalConns() {
+func (t *Tunnel) handleForward() {
 	for {
-		local, err := t.listener.Accept()
+		conn1, err := t.listener.Accept()
 		if err != nil {
 			log.Errorf("could not accept: %v", err)
 			return
 		}
-
-		remote, err := t.client.Dial(t.rc.remoteNet, t.rc.remoteAddress)
-		if err != nil {
-			log.Errorf("could not connect on remote: %v", err)
-			return
-		}
-
-		go t.waitFor(func() { t.tunnel(local, remote) })
-	}
-}
-
-func (t *Tunnel) handleRemoteConns() {
-	for {
-		remote, err := t.listener.Accept()
-		if err != nil {
-			log.Errorf("could not accept on remote: %v", err)
-			return
-		}
 		go t.waitFor(func() {
-			local, err := net.Dial(t.rc.localNet, t.rc.localAddress)
+			netw, addr := t.rc.remoteNet, t.rc.remoteAddress
+			if t.Mode == Remote || t.Mode == RemoteSocks {
+				netw, addr = t.rc.localNet, t.rc.localAddress
+			}
+			conn2, err := t.dial(netw, addr)
 			if err != nil {
-				log.Errorf("could not dial locally: %v", err)
+				log.Errorf("could not dial: %v", err)
 				return
 			}
-			t.tunnel(local, remote)
+			tunnel(conn1, conn2)
 		})
 	}
 }
 
-func (t *Tunnel) tunnel(local, remote net.Conn) {
-	defer local.Close()
-	defer remote.Close()
+func tunnel(c1, c2 net.Conn) {
+	defer c1.Close()
+	defer c2.Close()
 	done := make(chan struct{}, 2)
 
 	go func() {
-		io.Copy(local, remote)
+		io.Copy(c1, c2)
 		done <- struct{}{}
 	}()
 
 	go func() {
-		io.Copy(remote, local)
+		io.Copy(c2, c1)
 		done <- struct{}{}
 	}()
 
@@ -197,11 +186,10 @@ func (t *Tunnel) tunnel(local, remote net.Conn) {
 
 func (t *Tunnel) handleSocks() {
 	serv := &proxy.Server{
-		Dialer: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return t.client.Dial(network, addr)
+		Dialer: func(ctx context.Context, netw, addr string) (net.Conn, error) {
+			return t.dial(netw, addr)
 		},
 	}
-
 	for {
 		conn, err := t.listener.Accept()
 		if err != nil {
