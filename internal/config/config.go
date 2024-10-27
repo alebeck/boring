@@ -3,19 +3,22 @@ package config
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
+	"runtime"
 
 	"github.com/BurntSushi/toml"
+	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/paths"
 	"github.com/alebeck/boring/internal/tunnel"
 )
 
 const (
-	defaultFileName = "~/.boring.toml"
-	socksLabel      = "[SOCKS]"
+	fileName   = "boring.toml"
+	socksLabel = "[SOCKS]"
 )
 
-var FileName string
+var FilePath string
 
 // Config represents the application configuration as parsed from ./boring.toml
 type Config struct {
@@ -24,17 +27,34 @@ type Config struct {
 }
 
 func init() {
-	if FileName = os.Getenv("BORING_CONFIG"); FileName == "" {
-		FileName = defaultFileName
+	FilePath = os.Getenv("BORING_CONFIG")
+	if FilePath == "" {
+		configHome := getConfigHome()
+		FilePath = path.Join(configHome, fileName)
 	}
-	FileName = filepath.ToSlash(FileName)
-	FileName = paths.ReplaceTilde(FileName)
+	FilePath = filepath.ToSlash(FilePath)
+	FilePath = paths.ReplaceTilde(FilePath)
 }
 
-// LoadConfig parses the boring configuration file
-func LoadConfig() (*Config, error) {
+func Ensure() error {
+	if _, statErr := os.Stat(FilePath); statErr != nil {
+		d := filepath.Dir(FilePath)
+		if err := os.MkdirAll(d, 0700); err != nil {
+			return err
+		}
+		f, err := os.OpenFile(FilePath, os.O_RDWR|os.O_CREATE, 0600)
+		if err != nil {
+			return err
+		}
+		f.Close()
+		log.Infof("Created boring config file: %s", FilePath)
+	}
+	return nil
+}
+
+func Load() (*Config, error) {
 	var config Config
-	if _, err := toml.DecodeFile(FileName, &config); err != nil {
+	if _, err := toml.DecodeFile(FilePath, &config); err != nil {
 		return nil, fmt.Errorf("could not decode config file: %v", err)
 	}
 
@@ -60,4 +80,23 @@ func LoadConfig() (*Config, error) {
 
 	config.TunnelsMap = m
 	return &config, nil
+}
+
+func getConfigHome() string {
+	if runtime.GOOS != "windows" {
+		// Follow XDG specification on Unix
+		configHome := os.Getenv("XDG_CONFIG_HOME")
+		if configHome == "" {
+			configHome = filepath.Join(os.Getenv("HOME"), ".config")
+		}
+		return filepath.Join(configHome, "boring")
+	}
+	configHome := os.Getenv("LOCALAPPDATA")
+	if configHome == "" {
+		configHome = os.Getenv("APPDATA")
+	}
+	if configHome == "" {
+		configHome = os.Getenv("USERPROFILE")
+	}
+	return filepath.Join(configHome, "boring")
 }
