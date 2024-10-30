@@ -46,14 +46,14 @@ identity = "~/.ssh/id_prod"  # will try default ones if not set
 # ... more tunnels
 ```
 
-Currently, supported options are: `name`, `local`, `remote`, `host`, `user`, `identity`, `port`, and `mode`. `host` either describes a host which to match SSH configs to, or if no matches found, the actual hostname. `mode` can be 'local' for local, 'remote' for remote and "socks" for dynamic forwarding; default is 'local'. The location of the config file can be changed by setting the `BORING_CONFIG` environment variable.
+Currently, supported options are: `name`, `local`, `remote`, `host`, `user`, `identity`, `port`, and `mode`. `host` either describes a host which to match SSH configs to, or if no matches found, the actual hostname. `mode` can be "local" for local, "remote" for remote and "socks" for dynamic forwarding; default is "local". The location of the config file can be changed by setting the `BORING_CONFIG` environment variable.
 
 
 ## Installation
 Either
-* install via homebrew: `brew install boring`,
-* get one of the pre-built binaries from the [releases page](https://github.com/alebeck/boring/releases), or
-* build it yourself:
+* Install via homebrew: `brew install boring`,
+* Get one of the pre-built binaries from the [releases page](https://github.com/alebeck/boring/releases), or
+* Build it yourself:
 
   ```sh
   git clone https://github.com/alebeck/boring && cd boring
