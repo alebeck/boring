@@ -50,14 +50,17 @@ Currently, supported options are: `name`, `local`, `remote`, `host`, `user`, `id
 
 
 ## Installation
-Get one of the pre-built binaries from the [releases page](https://github.com/alebeck/boring/releases) or build it yourself:
+Either
+* install via homebrew: `brew install boring`,
+* get one of the pre-built binaries from the [releases page](https://github.com/alebeck/boring/releases), or
+* build it yourself:
 
-```sh
-git clone https://github.com/alebeck/boring && cd boring
-./build.sh
-```
+  ```sh
+  git clone https://github.com/alebeck/boring && cd boring
+  ./build.sh
+  ```
 
-Then, move the binary to a location in your `$PATH`.
+For the last two options, you then need to move the binary to a location in your `$PATH`.
 
 <details>
   <summary>Note for Windows users</summary>
