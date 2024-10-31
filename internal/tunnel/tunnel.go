@@ -48,10 +48,12 @@ func (t *Tunnel) Open() error {
 	if err = t.makeClient(); err != nil {
 		return fmt.Errorf("could not setup SSH client: %v", err)
 	}
+	log.Debugf("%v: connected to server", t.Name)
 
 	if err = t.makeListener(); err != nil {
 		return fmt.Errorf("cannot listen: %v", err)
 	}
+	log.Debugf("%v: listening on %v", t.Name, t.listener.Addr())
 
 	if t.stop == nil {
 		t.stop = make(chan struct{})

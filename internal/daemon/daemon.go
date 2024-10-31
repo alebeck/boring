@@ -115,7 +115,7 @@ func handleConnection(s *state, conn net.Conn) {
 		}
 		return
 	}
-	log.Infof("Received command %v", cmd)
+	log.Debugf("Received command %v", cmd)
 
 	// Execute command
 	switch cmd.Kind {
