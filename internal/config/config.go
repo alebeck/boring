@@ -29,6 +29,11 @@ func init() {
 	}
 	FileName = filepath.ToSlash(FileName)
 	FileName = paths.ReplaceTilde(FileName)
+
+	// If FileName exists and is a directory, append file name
+	if fi, err := os.Stat(FileName); err == nil && fi.IsDir() {
+		FileName = filepath.Join(FileName, filepath.Base(defaultFileName))
+	}
 }
 
 // LoadConfig parses the boring configuration file
