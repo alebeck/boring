@@ -72,7 +72,7 @@ func prepare() (*config.Config, error) {
 				return fmt.Errorf("could not create config file: %v", err)
 			}
 			f.Close()
-			log.Infof("Created boring config file: %s", config.FileName)
+			log.Infof("Hi! Created boring config file: %s", config.FileName)
 		}
 		if conf, err = config.LoadConfig(); err != nil {
 			return fmt.Errorf("could not load configuration: %v", err)
