@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
-	"runtime"
 	"slices"
 	"time"
 
@@ -47,8 +45,6 @@ func main() {
 		controlTunnels(os.Args[2:], daemon.Close)
 	case "list", "l":
 		listTunnels()
-	case "edit", "e":
-		openConfig()
 	default:
 		fmt.Println("Unknown command:", os.Args[1])
 		printUsage()
@@ -65,19 +61,24 @@ func prepare() (*config.Config, error) {
 
 	g.Go(func() error {
 		var err error
-		// Makes sure config file exists, and otherwise creates it
-		if err := config.Ensure(); err != nil {
-			return fmt.Errorf("could not create config file: %v", err)
+		// Check if config file exists, otherwise we can create it
+		if _, statErr := os.Stat(config.FileName); statErr != nil {
+			var f *os.File
+			if f, err = os.Create(config.FileName); err != nil {
+				return fmt.Errorf("could not create config file: %v", err)
+			}
+			f.Close()
+			log.Infof("Created boring config file: %s", config.FileName)
 		}
-		if conf, err = config.Load(); err != nil {
-			return fmt.Errorf("could not load configuration: %v", err)
+		if conf, err = config.LoadConfig(); err != nil {
+			return fmt.Errorf("Could not load configuration: %v", err)
 		}
 		return nil
 	})
 
 	g.Go(func() error {
 		if err := daemon.Ensure(ctx); err != nil {
-			return fmt.Errorf("could not start daemon: %v", err)
+			return fmt.Errorf("Could not start daemon: %v", err)
 		}
 		return nil
 	})
@@ -121,7 +122,7 @@ func openTunnel(name string, conf *config.Config) {
 	t, ok := conf.TunnelsMap[name]
 	if !ok {
 		log.Errorf("Tunnel '%s' not found in configuration (%s).",
-			name, config.FilePath)
+			name, config.FileName)
 		return
 	}
 
@@ -222,25 +223,6 @@ func transmitCmd(cmd daemon.Cmd, resp any) error {
 	return nil
 }
 
-func openConfig() {
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		editor = "vi"
-		if runtime.GOOS == "windows" {
-			editor = "notepad"
-		}
-	}
-
-	cmd := exec.Command(editor, config.FilePath)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		log.Fatalf("Editor: %v", err)
-	}
-}
-
 func printUsage() {
 	v := version
 	if v == "" {
@@ -252,8 +234,7 @@ func printUsage() {
 
 	fmt.Printf("boring %s\n", v)
 	fmt.Println("Usage:")
-	fmt.Println("  boring list,l                         List tunnels")
-	fmt.Println("  boring open,o <name1> [<name2> ...]   Open specified tunnel(s)")
-	fmt.Println("  boring close,c <name1> [<name2> ...]  Close specified tunnel(s)")
-	fmt.Println("  boring edit,e                         Edit configuration file")
+	fmt.Println("  boring list,l                        List tunnels")
+	fmt.Println("  boring open,o <name1> [<name2> ...]  Open specified tunnel(s)")
+	fmt.Println("  boring close,c <name1> [<name2> ...] Close specified tunnel(s)")
 }
