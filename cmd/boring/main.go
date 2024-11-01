@@ -66,15 +66,15 @@ func prepare() (*config.Config, error) {
 	g.Go(func() error {
 		var err error
 		// Check if config file exists, otherwise we can create it
-		if _, statErr := os.Stat(config.FileName); statErr != nil {
-			f, err := os.OpenFile(config.FileName, os.O_RDWR|os.O_CREATE, 0600)
+		if _, statErr := os.Stat(config.Path); statErr != nil {
+			f, err := os.OpenFile(config.Path, os.O_RDWR|os.O_CREATE, 0600)
 			if err != nil {
 				return fmt.Errorf("could not create config file: %v", err)
 			}
 			f.Close()
-			log.Infof("Hi! Created boring config file: %s", config.FileName)
+			log.Infof("Hi! Created boring config file: %s", config.Path)
 		}
-		if conf, err = config.LoadConfig(); err != nil {
+		if conf, err = config.Load(); err != nil {
 			return fmt.Errorf("could not load configuration: %v", err)
 		}
 		return nil
@@ -126,7 +126,7 @@ func openTunnel(name string, conf *config.Config) {
 	t, ok := conf.TunnelsMap[name]
 	if !ok {
 		log.Errorf("Tunnel '%s' not found in configuration (%s).",
-			name, config.FileName)
+			name, config.Path)
 		return
 	}
 
@@ -235,7 +235,7 @@ func openConfig() {
 			editor = "notepad"
 		}
 	}
-	cmd := exec.Command(editor, config.FileName)
+	cmd := exec.Command(editor, config.Path)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

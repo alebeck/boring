@@ -16,7 +16,7 @@ const (
 
 var statusNames = map[Status]string{
 	Closed: log.Red + "closed" + log.Reset,
-	Open:   log.Green + "open" + log.Reset,
+	Open:   log.Green + "12m43s" + log.Reset,
 	Reconn: log.Yellow + "reconn" + log.Reset,
 }
 
