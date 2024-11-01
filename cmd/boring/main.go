@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"time"
@@ -65,17 +66,11 @@ func prepare() (*config.Config, error) {
 
 	g.Go(func() error {
 		var err error
-		// Check if config file exists, otherwise we can create it
-		if _, statErr := os.Stat(config.Path); statErr != nil {
-			f, err := os.OpenFile(config.Path, os.O_RDWR|os.O_CREATE, 0600)
-			if err != nil {
-				return fmt.Errorf("could not create config file: %v", err)
-			}
-			f.Close()
-			log.Infof("Hi! Created boring config file: %s", config.Path)
+		if err = ensureConfig(); err != nil {
+			return fmt.Errorf("could not create config file: %v", err)
 		}
 		if conf, err = config.Load(); err != nil {
-			return fmt.Errorf("could not load configuration: %v", err)
+			return fmt.Errorf("could not load config: %v", err)
 		}
 		return nil
 	})
@@ -228,6 +223,10 @@ func transmitCmd(cmd daemon.Cmd, resp any) error {
 }
 
 func openConfig() {
+	if err := ensureConfig(); err != nil {
+		log.Fatalf("could not create config file: %v", err)
+	}
+
 	editor := os.Getenv("EDITOR")
 	if editor == "" {
 		editor = "vi"
@@ -235,11 +234,29 @@ func openConfig() {
 			editor = "notepad"
 		}
 	}
+
 	cmd := exec.Command(editor, config.Path)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Run()
+}
+
+// Checks if config file exists, otherwise creates it
+func ensureConfig() error {
+	if _, statErr := os.Stat(config.Path); statErr != nil {
+		d := filepath.Dir(config.Path)
+		if err := os.MkdirAll(d, 0700); err != nil {
+			return err
+		}
+		f, err := os.OpenFile(config.Path, os.O_RDWR|os.O_CREATE, 0600)
+		if err != nil {
+			return err
+		}
+		f.Close()
+		log.Infof("Hi! Created boring config file: %s", config.Path)
+	}
+	return nil
 }
 
 func printUsage() {
