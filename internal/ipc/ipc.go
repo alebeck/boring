@@ -14,7 +14,7 @@ func Send(s any, conn net.Conn) error {
 	if err != nil {
 		return fmt.Errorf("failed to serialize response: %v", err)
 	}
-	log.Debugf("Sending: %v", data)
+	log.Debugf("Sending: %v", string(data))
 
 	_, err = conn.Write(append(data, '\n'))
 	if err != nil {
@@ -29,7 +29,7 @@ func Receive(s any, conn net.Conn) error {
 	if err != nil {
 		return fmt.Errorf("failed to read from connection: %w", err)
 	}
-	log.Debugf("Received: %v", data)
+	log.Debugf("Received: %v", string(data))
 
 	err = json.Unmarshal(data, s)
 	if err != nil {

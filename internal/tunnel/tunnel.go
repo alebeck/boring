@@ -29,6 +29,7 @@ type Tunnel struct {
 	Port          int            `toml:"port" json:"port"`
 	Mode          Mode           `toml:"mode" json:"mode"`
 	Status        Status         `toml:"-" json:"status"`
+	LastConn      time.Time      `toml:"-" json:"last_conn"`
 	Closed        chan struct{}  `toml:"-" json:"-"`
 	rc            *runConfig     `toml:"-" json:"-"`
 	client        *ssh.Client    `toml:"-" json:"-"`
@@ -64,6 +65,7 @@ func (t *Tunnel) Open() error {
 
 	log.Infof("Opened tunnel %v...", t.Name)
 	t.Status = Open
+	t.LastConn = time.Now()
 	return nil
 }
 

@@ -186,18 +186,18 @@ func listTunnels() {
 
 	for _, t := range conf.Tunnels {
 		if q, ok := resp.Tunnels[t.Name]; ok {
-			tbl.AddRow(q.Status, q.Name, q.LocalAddress, q.Mode, q.RemoteAddress, q.Host)
+			tbl.AddRow(status(&q), q.Name, q.LocalAddress, q.Mode, q.RemoteAddress, q.Host)
 			visited[q.Name] = true
 			continue
 		}
 		// TODO: case where tunnel is in resp but with different name
-		tbl.AddRow(tunnel.Closed, t.Name, t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
+		tbl.AddRow(status(&t), t.Name, t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
 	}
 
 	// Add tunnels that are in resp but not in the config
 	for _, q := range resp.Tunnels {
 		if !visited[q.Name] {
-			tbl.AddRow(q.Status, q.Name, q.LocalAddress, q.Mode, q.RemoteAddress, q.Host)
+			tbl.AddRow(status(&q), q.Name, q.LocalAddress, q.Mode, q.RemoteAddress, q.Host)
 		}
 	}
 
