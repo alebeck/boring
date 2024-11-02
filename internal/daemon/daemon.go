@@ -148,11 +148,13 @@ func openTunnel(s *state, conn net.Conn, t tunnel.Tunnel) {
 	_, exists := s.tunnels[t.Name]
 	s.mutex.RUnlock()
 	if exists {
-		err = fmt.Errorf("tunnel already running")
+		err = fmt.Errorf("already running")
+		log.Errorf("%v: could not open: %v", t.Name, err)
 		return
 	}
 
 	if err = t.Open(); err != nil {
+		log.Errorf("%v: could not open: %v", t.Name, err)
 		return
 	}
 
@@ -179,11 +181,12 @@ func closeTunnel(s *state, conn net.Conn, q tunnel.Tunnel) {
 	s.mutex.RUnlock()
 	if !ok {
 		err = fmt.Errorf("tunnel not running")
+		log.Errorf("%v: could not close tunnel: %v", t.Name, err)
 		return
 	}
 
 	if err = t.Close(); err != nil {
-		err = fmt.Errorf("could not close tunnel: %v", err)
+		log.Errorf("%v: could not close tunnel: %v", t.Name, err)
 		return
 	}
 	<-t.Closed

@@ -63,7 +63,7 @@ func (t *Tunnel) Open() error {
 
 	go t.run()
 
-	log.Infof("Opened tunnel %v...", t.Name)
+	log.Infof("%v: opened tunnel", t.Name)
 	t.Status = Open
 	t.LastConn = time.Now()
 	return nil
@@ -96,7 +96,7 @@ func (t *Tunnel) run() {
 	disconn := make(chan struct{})
 	go func() {
 		t.client.Wait()
-		log.Infof("Client closed for %v", t.Name)
+		log.Infof("%v: client closed", t.Name)
 		close(disconn)
 	}()
 
@@ -106,15 +106,20 @@ func (t *Tunnel) run() {
 	stopped := false
 	select {
 	case <-t.stop:
-		log.Infof("Received stop signal for %v...", t.Name)
+		log.Infof("%v: received stop signal", t.Name)
 		stopped = true
 		t.client.Close()
 	case <-disconn:
 	}
 	t.listener.Close()
 	t.wg.Wait()
-	if !stopped && t.reconnectLoop() == nil {
-		return
+	if !stopped {
+		if err := t.reconnectLoop(); err != nil {
+			log.Errorf("%v: could not re-connect: %v", t.Name, err)
+		} else {
+			// Successfully re-connected
+			return
+		}
 	}
 	t.Status = Closed
 	close(t.Closed)
@@ -128,12 +133,12 @@ func (t *Tunnel) keepAlive(cancel chan struct{}) {
 		case <-time.After(keepAliveInterval):
 			_, _, err := t.client.SendRequest("keepalive@golang.org", true, nil)
 			if err != nil {
-				log.Errorf("Error sending keepalive for tunnel %v: %v", t.Name, err)
+				log.Errorf("%v: error sending keepalive: %v", t.Name, err)
 				// Close the client, this triggers the reconnection logic
 				t.client.Close()
 				return
 			}
-			log.Debugf("Sent keep-alive")
+			log.Debugf("%v: sent keep-alive", t.Name)
 		}
 	}
 }
@@ -152,7 +157,7 @@ func (t *Tunnel) handleForward() {
 	for {
 		conn1, err := t.listener.Accept()
 		if err != nil {
-			log.Errorf("could not accept: %v", err)
+			log.Errorf("%v: could not accept: %v", t.Name, err)
 			return
 		}
 		go t.waitFor(func() {
@@ -162,7 +167,7 @@ func (t *Tunnel) handleForward() {
 			}
 			conn2, err := t.dial(netw, addr)
 			if err != nil {
-				log.Errorf("could not dial: %v", err)
+				log.Errorf("%v: could not dial: %v", t.Name, err)
 				return
 			}
 			tunnel(conn1, conn2)
@@ -197,7 +202,7 @@ func (t *Tunnel) handleSocks() {
 	for {
 		conn, err := t.listener.Accept()
 		if err != nil {
-			log.Errorf("could not accept: %v", err)
+			log.Errorf("%v: could not accept: %v", t.Name, err)
 			return
 		}
 		go t.waitFor(func() { serv.ServeConn(conn) })
@@ -213,16 +218,16 @@ func (t *Tunnel) reconnectLoop() error {
 	for {
 		select {
 		case <-timeout:
-			return fmt.Errorf("reconnect timeout")
+			return fmt.Errorf("re-connect timeout")
 		case <-t.stop:
-			return fmt.Errorf("reconnect interrupted")
+			return fmt.Errorf("re-connect interrupted by stop signal")
 		case <-wait.C:
-			log.Infof("Reconnecting tunnel %v...", t.Name)
+			log.Infof("%v: try re-connect...", t.Name)
 			err := t.Open()
 			if err == nil {
 				return nil
 			}
-			log.Errorf("could not reconnect tunnel %v: %v. Retrying in %v...",
+			log.Errorf("%v: could not re-connect: %v. Retrying in %v...",
 				t.Name, err, waitTime)
 			wait.Reset(waitTime)
 			waitTime *= 2
