@@ -29,6 +29,7 @@ type Tunnel struct {
 	Port          int            `toml:"port" json:"port"`
 	Mode          Mode           `toml:"mode" json:"mode"`
 	Status        Status         `toml:"-" json:"status"`
+	LastConn      time.Time      `toml:"-" json:"last_conn"`
 	Closed        chan struct{}  `toml:"-" json:"-"`
 	rc            *runConfig     `toml:"-" json:"-"`
 	client        *ssh.Client    `toml:"-" json:"-"`
@@ -45,13 +46,15 @@ func (t *Tunnel) Open() error {
 		}
 	}
 
-	if err = t.setupClient(); err != nil {
+	if err = t.makeClient(); err != nil {
 		return fmt.Errorf("could not setup SSH client: %v", err)
 	}
+	log.Debugf("%v: connected to server", t.Name)
 
-	if err = t.setupListener(); err != nil {
+	if err = t.makeListener(); err != nil {
 		return fmt.Errorf("cannot listen: %v", err)
 	}
+	log.Debugf("%v: listening on %v", t.Name, t.listener.Addr())
 
 	if t.stop == nil {
 		t.stop = make(chan struct{})
@@ -60,32 +63,40 @@ func (t *Tunnel) Open() error {
 
 	go t.run()
 
-	log.Infof("Opened tunnel %v...", t.Name)
+	log.Infof("%v: opened tunnel", t.Name)
 	t.Status = Open
+	t.LastConn = time.Now()
 	return nil
 }
 
-func (t *Tunnel) setupClient() error {
+func (t *Tunnel) makeClient() error {
 	var err error
 	addr := fmt.Sprintf("%v:%v", t.rc.hostName, t.rc.port)
 	t.client, err = ssh.Dial("tcp", addr, t.rc.clientConfig)
 	return err
 }
 
-func (t *Tunnel) setupListener() error {
-	var err error
-	if t.Mode == Remote {
+func (t *Tunnel) makeListener() (err error) {
+	if t.Mode == Remote || t.Mode == RemoteSocks {
 		t.listener, err = t.client.Listen(t.rc.remoteNet, t.rc.remoteAddress)
 	} else {
 		t.listener, err = net.Listen(t.rc.localNet, t.rc.localAddress)
 	}
-	return err
+	return
+}
+
+func (t *Tunnel) dial(network, addr string) (net.Conn, error) {
+	if t.Mode == Remote || t.Mode == RemoteSocks {
+		return net.Dial(network, addr)
+	}
+	return t.client.Dial(network, addr)
 }
 
 func (t *Tunnel) run() {
 	disconn := make(chan struct{})
 	go func() {
 		t.client.Wait()
+		log.Infof("%v: client closed", t.Name)
 		close(disconn)
 	}()
 
@@ -95,15 +106,20 @@ func (t *Tunnel) run() {
 	stopped := false
 	select {
 	case <-t.stop:
-		log.Infof("Received stop signal for %v...", t.Name)
+		log.Infof("%v: received stop signal", t.Name)
 		stopped = true
 		t.client.Close()
 	case <-disconn:
 	}
 	t.listener.Close()
 	t.wg.Wait()
-	if !stopped && t.reconnectLoop() == nil {
-		return
+	if !stopped {
+		if err := t.reconnectLoop(); err != nil {
+			log.Errorf("%v: could not re-connect: %v", t.Name, err)
+		} else {
+			// Successfully re-connected
+			return
+		}
 	}
 	t.Status = Closed
 	close(t.Closed)
@@ -117,12 +133,12 @@ func (t *Tunnel) keepAlive(cancel chan struct{}) {
 		case <-time.After(keepAliveInterval):
 			_, _, err := t.client.SendRequest("keepalive@golang.org", true, nil)
 			if err != nil {
-				log.Errorf("Error sending keepalive for tunnel %v: %v", t.Name, err)
+				log.Errorf("%v: error sending keepalive: %v", t.Name, err)
 				// Close the client, this triggers the reconnection logic
 				t.client.Close()
 				return
 			}
-			log.Debugf("Sent keep-alive")
+			log.Debugf("%v: sent keep-alive", t.Name)
 		}
 	}
 }
@@ -130,65 +146,47 @@ func (t *Tunnel) keepAlive(cancel chan struct{}) {
 func (t *Tunnel) handleConns() {
 	defer t.listener.Close()
 	defer t.client.Close()
-
-	switch t.Mode {
-	case Local:
-		t.handleLocalConns()
-	case Remote:
-		t.handleRemoteConns()
-	case Socks:
-		t.handleSocks()
+	if t.Mode == Local || t.Mode == Remote {
+		t.handleForward()
+		return
 	}
+	t.handleSocks()
 }
 
-func (t *Tunnel) handleLocalConns() {
+func (t *Tunnel) handleForward() {
 	for {
-		local, err := t.listener.Accept()
+		conn1, err := t.listener.Accept()
 		if err != nil {
-			log.Errorf("could not accept: %v", err)
-			return
-		}
-
-		remote, err := t.client.Dial(t.rc.remoteNet, t.rc.remoteAddress)
-		if err != nil {
-			log.Errorf("could not connect on remote: %v", err)
-			return
-		}
-
-		go t.waitFor(func() { t.tunnel(local, remote) })
-	}
-}
-
-func (t *Tunnel) handleRemoteConns() {
-	for {
-		remote, err := t.listener.Accept()
-		if err != nil {
-			log.Errorf("could not accept on remote: %v", err)
+			log.Errorf("%v: could not accept: %v", t.Name, err)
 			return
 		}
 		go t.waitFor(func() {
-			local, err := net.Dial(t.rc.localNet, t.rc.localAddress)
+			netw, addr := t.rc.remoteNet, t.rc.remoteAddress
+			if t.Mode == Remote || t.Mode == RemoteSocks {
+				netw, addr = t.rc.localNet, t.rc.localAddress
+			}
+			conn2, err := t.dial(netw, addr)
 			if err != nil {
-				log.Errorf("could not dial locally: %v", err)
+				log.Errorf("%v: could not dial: %v", t.Name, err)
 				return
 			}
-			t.tunnel(local, remote)
+			tunnel(conn1, conn2)
 		})
 	}
 }
 
-func (t *Tunnel) tunnel(local, remote net.Conn) {
-	defer local.Close()
-	defer remote.Close()
+func tunnel(c1, c2 net.Conn) {
+	defer c1.Close()
+	defer c2.Close()
 	done := make(chan struct{}, 2)
 
 	go func() {
-		io.Copy(local, remote)
+		io.Copy(c1, c2)
 		done <- struct{}{}
 	}()
 
 	go func() {
-		io.Copy(remote, local)
+		io.Copy(c2, c1)
 		done <- struct{}{}
 	}()
 
@@ -197,15 +195,14 @@ func (t *Tunnel) tunnel(local, remote net.Conn) {
 
 func (t *Tunnel) handleSocks() {
 	serv := &proxy.Server{
-		Dialer: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return t.client.Dial(network, addr)
+		Dialer: func(ctx context.Context, netw, addr string) (net.Conn, error) {
+			return t.dial(netw, addr)
 		},
 	}
-
 	for {
 		conn, err := t.listener.Accept()
 		if err != nil {
-			log.Errorf("could not accept: %v", err)
+			log.Errorf("%v: could not accept: %v", t.Name, err)
 			return
 		}
 		go t.waitFor(func() { serv.ServeConn(conn) })
@@ -221,16 +218,16 @@ func (t *Tunnel) reconnectLoop() error {
 	for {
 		select {
 		case <-timeout:
-			return fmt.Errorf("reconnect timeout")
+			return fmt.Errorf("re-connect timeout")
 		case <-t.stop:
-			return fmt.Errorf("reconnect interrupted")
+			return fmt.Errorf("re-connect interrupted by stop signal")
 		case <-wait.C:
-			log.Infof("Reconnecting tunnel %v...", t.Name)
+			log.Infof("%v: try re-connect...", t.Name)
 			err := t.Open()
 			if err == nil {
 				return nil
 			}
-			log.Errorf("could not reconnect tunnel %v: %v. Retrying in %v...",
+			log.Errorf("%v: could not re-connect: %v. Retrying in %v...",
 				t.Name, err, waitTime)
 			wait.Reset(waitTime)
 			waitTime *= 2

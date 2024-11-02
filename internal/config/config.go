@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/BurntSushi/toml"
 	"github.com/alebeck/boring/internal/paths"
@@ -11,11 +12,11 @@ import (
 )
 
 const (
-	defaultFileName = "~/.boring.toml"
-	socksLabel      = "[SOCKS5 proxy]"
+	fileName   = ".boring.toml"
+	socksLabel = "[SOCKS]"
 )
 
-var FileName string
+var Path string
 
 // Config represents the application configuration as parsed from ./boring.toml
 type Config struct {
@@ -24,17 +25,29 @@ type Config struct {
 }
 
 func init() {
-	if FileName = os.Getenv("BORING_CONFIG"); FileName == "" {
-		FileName = defaultFileName
+	if Path = os.Getenv("BORING_CONFIG"); Path == "" {
+		Path = filepath.Join(getConfigHome(), fileName)
 	}
-	FileName = filepath.ToSlash(FileName)
-	FileName = paths.ReplaceTilde(FileName)
+	Path = filepath.ToSlash(Path)
+	Path = paths.ReplaceTilde(Path)
+}
+
+func getConfigHome() string {
+	if runtime.GOOS == "linux" {
+		// Follow XDG specification on Linux
+		h := os.Getenv("XDG_CONFIG_HOME")
+		if h == "" {
+			h = "~/.config"
+		}
+		return filepath.Join(h, "boring")
+	}
+	return "~"
 }
 
 // LoadConfig parses the boring configuration file
-func LoadConfig() (*Config, error) {
+func Load() (*Config, error) {
 	var config Config
-	if _, err := toml.DecodeFile(FileName, &config); err != nil {
+	if _, err := toml.DecodeFile(Path, &config); err != nil {
 		return nil, fmt.Errorf("could not decode config file: %v", err)
 	}
 
@@ -48,11 +61,13 @@ func LoadConfig() (*Config, error) {
 		m[t.Name] = t
 	}
 
-	// Replace the remote address of Socks tunnels by a fixed indicator,
-	// it is not used for anything anyway
+	// Replace the remote address of Socks tunnels and local address of reverse
+	// socks tunnels by a fixed indicator, it is not used for anything anyway
 	for _, t := range m {
 		if t.Mode == tunnel.Socks {
 			t.RemoteAddress = socksLabel
+		} else if t.Mode == tunnel.RemoteSocks {
+			t.LocalAddress = socksLabel
 		}
 	}
 

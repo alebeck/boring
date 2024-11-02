@@ -20,10 +20,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"strconv"
 	"time"
+
+	"github.com/alebeck/boring/internal/log"
 )
 
 // Authentication METHODs described in RFC 1928, section 3.
@@ -80,14 +81,8 @@ const (
 	addrTypeNotSupported replyCode = 8
 )
 
-type logf func(format string, args... any)
-
 // Server is a SOCKS5 proxy server.
 type Server struct {
-	// Logf optionally specifies the logger to use.
-	// If nil, the standard logger is used.
-	Logf logf
-
 	// Dialer optionally specifies the dialer to use for outgoing connections.
 	// If nil, the net package's standard dialer is used.
 	Dialer func(ctx context.Context, network, addr string) (net.Conn, error)
@@ -106,14 +101,6 @@ func (s *Server) dial(ctx context.Context, network, addr string) (net.Conn, erro
 	return dial(ctx, network, addr)
 }
 
-func (s *Server) logf(format string, args ...any) {
-	logf := s.Logf
-	if logf == nil {
-		logf = log.Printf
-	}
-	logf(format, args...)
-}
-
 // Serve accepts and handles incoming connections on the given listener.
 func (s *Server) Serve(l net.Listener) error {
 	defer l.Close()
@@ -128,10 +115,10 @@ func (s *Server) Serve(l net.Listener) error {
 
 func (s *Server) ServeConn(conn net.Conn) error {
 	defer conn.Close()
-	socksC := &Conn{logf: s.Logf, clientConn: conn, srv: s}
+	socksC := &Conn{clientConn: conn, srv: s}
 	err := socksC.Run()
 	if err != nil {
-		s.logf("client connection failed: %v", err)
+		log.Errorf("client connection failed: %v", err)
 	}
 	return nil
 }
@@ -141,7 +128,6 @@ func (s *Server) ServeConn(conn net.Conn) error {
 type Conn struct {
 	// The struct is filled by each of the internal
 	// methods in turn as the transaction progresses.
-	logf       logf
 	srv        *Server
 	clientConn net.Conn
 	request    *request
@@ -334,7 +320,7 @@ func (c *Conn) transferUDP(associatedTCP net.Conn, clientConn net.PacketConn, ta
 					if errors.Is(err, net.ErrClosed) {
 						return
 					}
-					c.logf("udp transfer: handle udp request fail: %v", err)
+					log.Errorf("udp transfer: handle udp request fail: %v", err)
 				}
 			}
 		}
@@ -357,7 +343,7 @@ func (c *Conn) transferUDP(associatedTCP net.Conn, clientConn net.PacketConn, ta
 					if errors.Is(err, net.ErrClosed) {
 						return
 					}
-					c.logf("udp transfer: handle udp response fail: %v", err)
+					log.Errorf("udp transfer: handle udp response fail: %v", err)
 				}
 			}
 		}
@@ -391,7 +377,7 @@ func (c *Conn) handleUDPRequest(
 	}
 	targetAddr, err := net.ResolveUDPAddr("udp", req.addr.hostPort())
 	if err != nil {
-		c.logf("resolve target addr fail: %v", err)
+		log.Errorf("resolve target addr fail: %v", err)
 	}
 
 	nn, err := targetConn.WriteTo(data, targetAddr)

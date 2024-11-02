@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"time"
 
@@ -45,6 +48,8 @@ func main() {
 		controlTunnels(os.Args[2:], daemon.Close)
 	case "list", "l":
 		listTunnels()
+	case "edit", "e":
+		openConfig()
 	default:
 		fmt.Println("Unknown command:", os.Args[1])
 		printUsage()
@@ -61,24 +66,18 @@ func prepare() (*config.Config, error) {
 
 	g.Go(func() error {
 		var err error
-		// Check if config file exists, otherwise we can create it
-		if _, statErr := os.Stat(config.FileName); statErr != nil {
-			var f *os.File
-			if f, err = os.Create(config.FileName); err != nil {
-				return fmt.Errorf("could not create config file: %v", err)
-			}
-			f.Close()
-			log.Infof("Created boring config file: %s", config.FileName)
+		if err = ensureConfig(); err != nil {
+			return fmt.Errorf("could not create config file: %v", err)
 		}
-		if conf, err = config.LoadConfig(); err != nil {
-			return fmt.Errorf("Could not load configuration: %v", err)
+		if conf, err = config.Load(); err != nil {
+			return fmt.Errorf("could not load config: %v", err)
 		}
 		return nil
 	})
 
 	g.Go(func() error {
 		if err := daemon.Ensure(ctx); err != nil {
-			return fmt.Errorf("Could not start daemon: %v", err)
+			return fmt.Errorf("could not start daemon: %v", err)
 		}
 		return nil
 	})
@@ -122,7 +121,7 @@ func openTunnel(name string, conf *config.Config) {
 	t, ok := conf.TunnelsMap[name]
 	if !ok {
 		log.Errorf("Tunnel '%s' not found in configuration (%s).",
-			name, config.FileName)
+			name, config.Path)
 		return
 	}
 
@@ -133,9 +132,9 @@ func openTunnel(name string, conf *config.Config) {
 	}
 
 	if !resp.Success {
-		log.Errorf("Tunnel %v could not be opened: %v", name, resp.Error)
+		log.Errorf("Tunnel '%v' could not be opened: %v", name, resp.Error)
 	} else {
-		log.Infof("Opened tunnel %s: %s %v %s via %s",
+		log.Infof("Opened tunnel '%s': %s %v %s via %s",
 			log.Green+t.Name+log.Reset,
 			t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
 	}
@@ -153,9 +152,9 @@ func closeTunnel(name string) {
 	}
 
 	if !resp.Success {
-		log.Errorf("Tunnel %v could not be closed: %v", name, resp.Error)
+		log.Errorf("Tunnel '%v' could not be closed: %v", name, resp.Error)
 	} else {
-		log.Infof("Closed tunnel %s", log.Green+t.Name+log.Reset)
+		log.Infof("Closed tunnel '%s'", log.Green+t.Name+log.Reset)
 	}
 }
 
@@ -187,18 +186,18 @@ func listTunnels() {
 
 	for _, t := range conf.Tunnels {
 		if q, ok := resp.Tunnels[t.Name]; ok {
-			tbl.AddRow(q.Status, q.Name, q.LocalAddress, q.Mode, q.RemoteAddress, q.Host)
+			tbl.AddRow(status(&q), q.Name, q.LocalAddress, q.Mode, q.RemoteAddress, q.Host)
 			visited[q.Name] = true
 			continue
 		}
 		// TODO: case where tunnel is in resp but with different name
-		tbl.AddRow(tunnel.Closed, t.Name, t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
+		tbl.AddRow(status(&t), t.Name, t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
 	}
 
 	// Add tunnels that are in resp but not in the config
 	for _, q := range resp.Tunnels {
 		if !visited[q.Name] {
-			tbl.AddRow(q.Status, q.Name, q.LocalAddress, q.Mode, q.RemoteAddress, q.Host)
+			tbl.AddRow(status(&q), q.Name, q.LocalAddress, q.Mode, q.RemoteAddress, q.Host)
 		}
 	}
 
@@ -223,6 +222,43 @@ func transmitCmd(cmd daemon.Cmd, resp any) error {
 	return nil
 }
 
+func openConfig() {
+	if err := ensureConfig(); err != nil {
+		log.Fatalf("could not create config file: %v", err)
+	}
+
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vi"
+		if runtime.GOOS == "windows" {
+			editor = "notepad"
+		}
+	}
+
+	cmd := exec.Command(editor, config.Path)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+}
+
+// Checks if config file exists, otherwise creates it
+func ensureConfig() error {
+	if _, statErr := os.Stat(config.Path); statErr != nil {
+		d := filepath.Dir(config.Path)
+		if err := os.MkdirAll(d, 0700); err != nil {
+			return err
+		}
+		f, err := os.OpenFile(config.Path, os.O_RDWR|os.O_CREATE, 0600)
+		if err != nil {
+			return err
+		}
+		f.Close()
+		log.Infof("Hi! Created boring config file: %s", config.Path)
+	}
+	return nil
+}
+
 func printUsage() {
 	v := version
 	if v == "" {
@@ -234,7 +270,8 @@ func printUsage() {
 
 	fmt.Printf("boring %s\n", v)
 	fmt.Println("Usage:")
-	fmt.Println("  boring list,l                        List tunnels")
-	fmt.Println("  boring open,o <name1> [<name2> ...]  Open specified tunnel(s)")
-	fmt.Println("  boring close,c <name1> [<name2> ...] Close specified tunnel(s)")
+	fmt.Println("  boring l, list                         List tunnels")
+	fmt.Println("  boring o, open <name1> [<name2> ...]   Open specified tunnel(s)")
+	fmt.Println("  boring c, close <name1> [<name2> ...]  Close specified tunnel(s)")
+	fmt.Println("  boring e, edit                         Edit configuration file")
 }

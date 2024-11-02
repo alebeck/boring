@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/user"
 	"strconv"
 	"strings"
 	"time"
@@ -60,6 +61,13 @@ func (t *Tunnel) makeRunConfig() error {
 		rc.hostName = t.Host
 	}
 
+	// Use $USER if still no user specified
+	if rc.user == "" {
+		if u, err := user.Current(); err == nil {
+			rc.user = u.Username
+		}
+	}
+
 	if err := validate(&rc); err != nil {
 		return err
 	}
@@ -70,11 +78,12 @@ func (t *Tunnel) makeRunConfig() error {
 	}
 
 	var err error
-	rc.remoteAddress, rc.remoteNet, err = parseAddr(string(t.RemoteAddress), t.Mode == Remote)
+	short := t.Mode == Remote || t.Mode == RemoteSocks
+	rc.remoteAddress, rc.remoteNet, err = parseAddr(string(t.RemoteAddress), short)
 	if err != nil {
 		return fmt.Errorf("remote address: %v", err)
 	}
-	rc.localAddress, rc.localNet, err = parseAddr(string(t.LocalAddress), t.Mode == Local)
+	rc.localAddress, rc.localNet, err = parseAddr(string(t.LocalAddress), !short)
 	if err != nil {
 		return fmt.Errorf("local address: %v", err)
 	}
