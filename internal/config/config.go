@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 	"github.com/alebeck/boring/internal/paths"
@@ -44,7 +45,7 @@ func getConfigHome() string {
 	return "~"
 }
 
-// LoadConfig parses the boring configuration file
+// Load parses the boring configuration file
 func Load() (*Config, error) {
 	var config Config
 	if _, err := toml.DecodeFile(Path, &config); err != nil {
@@ -57,6 +58,10 @@ func Load() (*Config, error) {
 		t := &config.Tunnels[i]
 		if _, exists := m[t.Name]; exists {
 			return nil, fmt.Errorf("found duplicated tunnel name '%v'", t.Name)
+		}
+		if t.Name == "" || strings.Contains(t.Name, " ") || specialPrefix(t.Name) {
+			return nil, fmt.Errorf("tunnel names cannot be empty, contain spaces,"+
+				" or start with special characters. Found '%v'", t.Name)
 		}
 		m[t.Name] = t
 	}
@@ -73,4 +78,14 @@ func Load() (*Config, error) {
 
 	config.TunnelsMap = m
 	return &config, nil
+}
+
+func specialPrefix(s string) bool {
+	if s == "" {
+		return false
+	}
+	firstChar := s[0]
+	return !(firstChar >= 'A' && firstChar <= 'Z' ||
+		firstChar >= 'a' && firstChar <= 'z' ||
+		firstChar >= '0' && firstChar <= '9')
 }
