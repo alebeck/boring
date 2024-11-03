@@ -58,9 +58,11 @@ Currently, supported options are:
 * `port`: SSH port. If not set, tries to read it from SSH config, defaulting to `22`.
 
 ## Installation
-### Homebrew
 
-`brew install boring`
+### Homebrew
+```
+brew install boring
+```
 
 ### Pre-built
 Get one of the pre-built binaries from the [releases page](https://github.com/alebeck/boring/releases). Then move the binary to a location in your `$PATH`.
