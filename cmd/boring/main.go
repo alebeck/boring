@@ -1,25 +1,12 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime"
-	"slices"
-	"time"
 
-	"github.com/alebeck/boring/internal/config"
 	"github.com/alebeck/boring/internal/daemon"
-	"github.com/alebeck/boring/internal/ipc"
 	"github.com/alebeck/boring/internal/log"
-	"github.com/alebeck/boring/internal/table"
-	"github.com/alebeck/boring/internal/tunnel"
-	"golang.org/x/sync/errgroup"
 )
-
-const daemonTimeout = 2 * time.Second
 
 var version, commit string
 
@@ -38,12 +25,14 @@ func main() {
 	switch os.Args[1] {
 	case "open", "o":
 		if len(os.Args) < 3 {
-			log.Fatalf("'open' requires at least one 'name' argument.")
+			log.Fatalf("'open' requires at least one 'name' argument," +
+				" or an '--all/-a' or '--glob/-g' flag.")
 		}
 		controlTunnels(os.Args[2:], daemon.Open)
 	case "close", "c":
 		if len(os.Args) < 3 {
-			log.Fatalf("'close' requires at least one 'name' argument.")
+			log.Fatalf("'close' requires at least one 'name' argument," +
+				" or an '--all/-a' or '--glob/-g' flag.")
 		}
 		controlTunnels(os.Args[2:], daemon.Close)
 	case "list", "l":
@@ -57,208 +46,6 @@ func main() {
 	}
 }
 
-// prepare loads the configuration and ensures the daemon is running
-func prepare() (*config.Config, error) {
-	var conf *config.Config
-	ctx, cancel := context.WithTimeout(context.Background(), daemonTimeout)
-	g, ctx := errgroup.WithContext(ctx)
-	defer cancel()
-
-	g.Go(func() error {
-		var err error
-		if err = ensureConfig(); err != nil {
-			return fmt.Errorf("could not create config file: %v", err)
-		}
-		if conf, err = config.Load(); err != nil {
-			return fmt.Errorf("could not load config: %v", err)
-		}
-		return nil
-	})
-
-	g.Go(func() error {
-		if err := daemon.Ensure(ctx); err != nil {
-			return fmt.Errorf("could not start daemon: %v", err)
-		}
-		return nil
-	})
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-	return conf, nil
-}
-
-func controlTunnels(names []string, kind daemon.CmdKind) {
-	conf, err := prepare()
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
-
-	// Remove potential duplicates from names list
-	names = slices.Compact(slices.Sorted(slices.Values(names)))
-
-	// Issue concurrent commands for all tunnels
-	done := make(chan bool, len(names))
-	for _, name := range names {
-		go func() {
-			if kind == daemon.Open {
-				openTunnel(name, conf)
-			} else if kind == daemon.Close {
-				closeTunnel(name)
-			} else {
-				log.Errorf("Unknown command: %v", kind)
-			}
-			done <- true
-		}()
-	}
-
-	for range names {
-		<-done
-	}
-}
-
-func openTunnel(name string, conf *config.Config) {
-	t, ok := conf.TunnelsMap[name]
-	if !ok {
-		log.Errorf("Tunnel '%s' not found in configuration (%s).",
-			name, config.Path)
-		return
-	}
-
-	var resp daemon.Resp
-	cmd := daemon.Cmd{Kind: daemon.Open, Tunnel: *t}
-	if err := transmitCmd(cmd, &resp); err != nil {
-		log.Errorf("Could not transmit 'open' command: %v", err)
-	}
-
-	if !resp.Success {
-		log.Errorf("Tunnel '%v' could not be opened: %v", name, resp.Error)
-	} else {
-		log.Infof("Opened tunnel '%s': %s %v %s via %s",
-			log.Green+t.Name+log.Reset,
-			t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
-	}
-}
-
-func closeTunnel(name string) {
-	// The daemon only needs the name for closing. In cases where the
-	// config has changed, the name is all we have about the tunnel anyway.
-	t := tunnel.Tunnel{Name: name}
-
-	var resp daemon.Resp
-	cmd := daemon.Cmd{Kind: daemon.Close, Tunnel: t}
-	if err := transmitCmd(cmd, &resp); err != nil {
-		log.Errorf("Could not transmit 'close' command: %v", err)
-	}
-
-	if !resp.Success {
-		log.Errorf("Tunnel '%v' could not be closed: %v", name, resp.Error)
-	} else {
-		log.Infof("Closed tunnel '%s'", log.Green+t.Name+log.Reset)
-	}
-}
-
-func listTunnels() {
-	conf, err := prepare()
-	if err != nil {
-		log.Fatalf(err.Error())
-		return
-	}
-
-	var resp daemon.Resp
-	cmd := daemon.Cmd{Kind: daemon.List}
-	if err = transmitCmd(cmd, &resp); err != nil {
-		log.Errorf("Could not transmit command: %v", err)
-		return
-	}
-	if !resp.Success {
-		log.Errorf("Could not list tunnels: %v", resp.Error)
-		return
-	}
-
-	if len(resp.Tunnels) == 0 && len(conf.Tunnels) == 0 {
-		log.Infof("No tunnels configured.")
-		return
-	}
-
-	tbl := table.New("Status", "Name", "Local", "", "Remote", "Via")
-	visited := make(map[string]bool)
-
-	for _, t := range conf.Tunnels {
-		if q, ok := resp.Tunnels[t.Name]; ok {
-			tbl.AddRow(status(&q), q.Name, q.LocalAddress, q.Mode, q.RemoteAddress, q.Host)
-			visited[q.Name] = true
-			continue
-		}
-		// TODO: case where tunnel is in resp but with different name
-		tbl.AddRow(status(&t), t.Name, t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
-	}
-
-	// Add tunnels that are in resp but not in the config
-	for _, q := range resp.Tunnels {
-		if !visited[q.Name] {
-			tbl.AddRow(status(&q), q.Name, q.LocalAddress, q.Mode, q.RemoteAddress, q.Host)
-		}
-	}
-
-	tbl.Print()
-}
-
-func transmitCmd(cmd daemon.Cmd, resp any) error {
-	conn, err := daemon.Connect()
-	if err != nil {
-		return fmt.Errorf("could not connect to daemon: %v", err)
-	}
-	defer conn.Close()
-
-	if err := ipc.Send(cmd, conn); err != nil {
-		return fmt.Errorf("could not send command: %v", err)
-	}
-
-	if err = ipc.Receive(resp, conn); err != nil {
-		return fmt.Errorf("could not receive response: %v", err)
-	}
-
-	return nil
-}
-
-func openConfig() {
-	if err := ensureConfig(); err != nil {
-		log.Fatalf("could not create config file: %v", err)
-	}
-
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		editor = "vi"
-		if runtime.GOOS == "windows" {
-			editor = "notepad"
-		}
-	}
-
-	cmd := exec.Command(editor, config.Path)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Run()
-}
-
-// Checks if config file exists, otherwise creates it
-func ensureConfig() error {
-	if _, statErr := os.Stat(config.Path); statErr != nil {
-		d := filepath.Dir(config.Path)
-		if err := os.MkdirAll(d, 0700); err != nil {
-			return err
-		}
-		f, err := os.OpenFile(config.Path, os.O_RDWR|os.O_CREATE, 0600)
-		if err != nil {
-			return err
-		}
-		f.Close()
-		log.Infof("Hi! Created boring config file: %s", config.Path)
-	}
-	return nil
-}
-
 func printUsage() {
 	v := version
 	if v == "" {
@@ -270,8 +57,13 @@ func printUsage() {
 
 	fmt.Printf("boring %s\n", v)
 	fmt.Println("Usage:")
-	fmt.Println("  boring l, list                         List tunnels")
-	fmt.Println("  boring o, open <name1> [<name2> ...]   Open specified tunnel(s)")
-	fmt.Println("  boring c, close <name1> [<name2> ...]  Close specified tunnel(s)")
-	fmt.Println("  boring e, edit                         Edit configuration file")
+	fmt.Println("  boring l,list             List tunnels")
+
+	fmt.Println(`  boring o, open (-a | -g <pat> | (<name1> [<name2> ...]))
+    -a, --all                 Open all tunnels
+    -g, --glob <pat>          Open tunnels matching glob pattern <pat>
+    <name1> [<name2> ...]     Open tunnel(s) by name(s)`)
+
+	fmt.Println("  boring c, close           Close tunnels, same options as 'open'")
+	fmt.Println("  boring e, edit            Edit configuration file")
 }
