@@ -60,6 +60,9 @@ func controlTunnels(args []string, kind daemon.CmdKind) {
 			log.Fatalf("'--glob' takes exactly one argument.")
 		}
 		glob = args[1] // `args[1]` is a glob pattern
+		if glob == "" {
+			log.Fatalf("Glob pattern cannot be empty.")
+		}
 	}
 
 	conf, err := prepare()
