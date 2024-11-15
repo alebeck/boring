@@ -2,6 +2,8 @@ package tunnel
 
 import (
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/alebeck/boring/internal/paths"
 	"github.com/kevinburke/ssh_config"
@@ -10,6 +12,7 @@ import (
 var (
 	userConfigPath   = paths.ReplaceTilde("~/.ssh/config")
 	systemConfigPath = "/etc/ssh/ssh_config"
+	algos            = []string{"Ciphers", "MACs", "HostKeyAlgorithms", "KexAlgorithms"}
 )
 
 // sshConfig (and the following functions) are a thin wrapper around
@@ -81,6 +84,12 @@ func findVal(c *ssh_config.Config, alias, key string) (string, error) {
 	if err != nil || val == "" {
 		return "", err
 	}
+
+	// check for special symbols within algorithm specifications
+	if slices.Contains(algos, key) {
+		val = processAlgos(val, key)
+	}
+
 	return val, nil
 }
 
@@ -105,4 +114,41 @@ func parse(path string) (*ssh_config.Config, error) {
 		return nil, err
 	}
 	return c, nil
+}
+
+func processAlgos(v, key string) string {
+	if !(strings.HasPrefix(v, "+") || strings.HasPrefix(v, "-") ||
+		strings.HasPrefix(v, "^")) {
+		return v
+	}
+
+	cur := strings.Split(v[1:], ",")
+	def := strings.Split(ssh_config.Default(key), ",")
+	var out []string
+
+	switch v[0] {
+	case '+':
+		out = append(def, cur...)
+	case '-':
+		out = make([]string, 0, len(def))
+		for _, a := range def {
+			if !slices.Contains(cur, a) {
+				out = append(out, a)
+			}
+		}
+	case '^':
+		out = make([]string, 0, len(def)+len(cur))
+		for _, a := range cur {
+			if slices.Contains(def, a) {
+				out = append(out, a)
+			}
+		}
+		for _, a := range def {
+			if !slices.Contains(out, a) {
+				out = append(out, a)
+			}
+		}
+	}
+
+	return strings.Join(out, ",")
 }
