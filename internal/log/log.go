@@ -80,22 +80,22 @@ func Debugf(format string, a ...any) {
 
 func Infof(format string, a ...any) {
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(writer, "%s %sINFO%s %s\n", timestamp(), Blue, Reset, message)
+	fmt.Fprintf(writer, "%s %sINFO%s %s\n", timestamp(), Bold+Blue, Reset, message)
 }
 
 func Warningf(format string, a ...any) {
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(writer, "%s %sWARNING%s %s\n", timestamp(), Yellow, Reset, message)
+	fmt.Fprintf(writer, "%s %sWARNING%s %s\n", timestamp(), Bold+Yellow, Reset, message)
 }
 
 func Errorf(format string, a ...any) {
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(writer, "%s %sERROR%s %s\n", timestamp(), Red, Reset, message)
+	fmt.Fprintf(writer, "%s %sERROR%s %s\n", timestamp(), Bold+Red, Reset, message)
 }
 
 func Fatalf(format string, a ...any) {
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(writer, "%s %sFATAL%s %s\n", timestamp(), Red, Reset, message)
+	fmt.Fprintf(writer, "%s %sFATAL%s %s\n", timestamp(), Bold+Red, Reset, message)
 	os.Exit(1)
 }
 
