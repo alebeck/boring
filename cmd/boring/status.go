@@ -30,5 +30,5 @@ func status(t *tunnel.Tunnel) string {
 	} else {
 		str = fmt.Sprintf("%02dm%02ds", mins, secs)
 	}
-	return log.Green + str + log.Reset
+	return log.Bold + log.Green + str + log.Reset
 }
