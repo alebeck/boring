@@ -111,6 +111,11 @@ func (rc *runConfig) parseSSHConf(alias string) error {
 	rc.hostKeyAlgos = split(c.Get(alias, "HostKeyAlgorithms"))
 	rc.kexAlgos = split(c.Get(alias, "KexAlgorithms"))
 
+	log.Debugf("offering ciphers: %v", rc.ciphers)
+	log.Debugf("offering MACs: %v", rc.macs)
+	log.Debugf("offering host key algorithms: %v", rc.hostKeyAlgos)
+	log.Debugf("offering Kex algorithms: %v", rc.kexAlgos)
+
 	rc.user = c.Get(alias, "User")
 	rc.port, _ = strconv.Atoi(c.Get(alias, "Port"))
 	rc.hostName = c.Get(alias, "HostName")
