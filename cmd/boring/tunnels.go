@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -126,7 +127,12 @@ func openTunnel(t *tunnel.Tunnel) {
 	}
 
 	if !resp.Success {
-		log.Errorf("Tunnel '%v' could not be opened: %v", t.Name, resp.Error)
+		// cannot use errors.Is because error is transmitted as string over IPC
+		if strings.HasSuffix(resp.Error, daemon.AlreadyRunning.Error()) {
+			log.Infof("Tunnel '%v' is already running.", t.Name)
+			return
+		}
+		log.Errorf("Could not open tunnel '%v': %v", t.Name, resp.Error)
 	} else {
 		log.Infof("Opened tunnel '%s': %s %v %s via %s.", log.Green+log.Bold+t.Name+log.Reset,
 			t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)

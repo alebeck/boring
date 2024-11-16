@@ -15,6 +15,8 @@ import (
 	"github.com/alebeck/boring/internal/tunnel"
 )
 
+var AlreadyRunning = errors.New("already running")
+
 type state struct {
 	// TODO: write proper concurrent map structure for this
 	tunnels map[string]*tunnel.Tunnel
@@ -148,7 +150,7 @@ func openTunnel(s *state, conn net.Conn, t tunnel.Tunnel) {
 	_, exists := s.tunnels[t.Name]
 	s.mutex.RUnlock()
 	if exists {
-		err = fmt.Errorf("already running")
+		err = AlreadyRunning
 		log.Errorf("%v: could not open: %v", t.Name, err)
 		return
 	}
