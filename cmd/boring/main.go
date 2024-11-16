@@ -25,14 +25,14 @@ func main() {
 	switch os.Args[1] {
 	case "open", "o":
 		if len(os.Args) < 3 {
-			log.Fatalf("'open' requires at least one 'name' argument," +
-				" or an '--all/-a' or '--glob/-g' flag.")
+			log.Fatalf("'open' requires at least one 'pattern' argument," +
+				" or an '--all/-a' flag.")
 		}
 		controlTunnels(os.Args[2:], daemon.Open)
 	case "close", "c":
 		if len(os.Args) < 3 {
-			log.Fatalf("'close' requires at least one 'name' argument," +
-				" or an '--all/-a' or '--glob/-g' flag.")
+			log.Fatalf("'close' requires at least one 'pattern' argument," +
+				" or an '--all/-a' flag.")
 		}
 		controlTunnels(os.Args[2:], daemon.Close)
 	case "list", "l":
@@ -57,13 +57,10 @@ func printUsage() {
 
 	fmt.Printf("boring %s\n", v)
 	fmt.Println("Usage:")
-	fmt.Println("  boring l,list             List tunnels")
-
-	fmt.Println(`  boring o, open (-a | -g <pat> | (<name1> [<name2> ...]))
-    -a, --all                 Open all tunnels
-    -g, --glob <pat>          Open tunnels matching glob pattern <pat>
-    <name1> [<name2> ...]     Open tunnel(s) by name(s)`)
-
-	fmt.Println("  boring c, close           Close tunnels, same options as 'open'")
-	fmt.Println("  boring e, edit            Edit configuration file")
+	fmt.Println("  boring list, l                List all tunnels")
+	fmt.Println(`  boring open, o (-a | <patterns>...)
+    <patterns>...               Open tunnels matching glob patterns
+    -a, --all                   Open all tunnels`)
+	fmt.Println("  boring close, c               Close tunnels (same options as 'open')")
+	fmt.Println("  boring edit, e                Edit the configuration file")
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/alebeck/boring/internal/config"
@@ -49,20 +50,11 @@ func prepare() (*config.Config, error) {
 }
 
 func controlTunnels(args []string, kind daemon.CmdKind) {
-	var glob string
 	if args[0] == "--all" || args[0] == "-a" {
 		if len(args) != 1 {
 			log.Fatalf("'--all' does not take any additional arguments.")
 		}
-		glob = "*"
-	} else if args[0] == "--glob" || args[0] == "-g" {
-		if len(args) != 2 {
-			log.Fatalf("'--glob' takes exactly one argument.")
-		}
-		glob = args[1] // `args[1]` is a glob pattern
-		if glob == "" {
-			log.Fatalf("Glob pattern cannot be empty.")
-		}
+		args = []string{"*"}
 	}
 
 	conf, err := prepare()
@@ -79,46 +71,51 @@ func controlTunnels(args []string, kind daemon.CmdKind) {
 		}
 	}
 
-	// Filter tunnels based on user arguments
-	if glob == "" {
-		// `args` are plain tunnel names
-		extra := filterNames(tunnels, args)
-		for _, n := range extra {
-			msg := fmt.Sprintf("Tunnel '%s' not found in configuration.", n)
-			if kind == daemon.Close {
-				msg = fmt.Sprintf("Tunnel '%s' is not running.", n)
-			}
-			log.Errorf(msg)
+	// Filter tunnels based on patterns
+	keep := make(map[string]bool, len(tunnels))
+	var notMatched []string
+	for _, pat := range args {
+		n, err := filterGlob(tunnels, keep, pat)
+		if err != nil {
+			log.Fatalf("Malformed glob pattern '%v'.", pat)
 		}
-	} else {
-		if err = filterGlob(tunnels, glob); err != nil {
-			log.Fatalf("Malformed glob pattern: %v", args[1])
+		if n == 0 {
+			notMatched = append(notMatched, pat)
 		}
-		if len(tunnels) == 0 {
-			msg := fmt.Sprintf("No tunnels match pattern '%s'.", glob)
-			if kind == daemon.Close {
-				msg = fmt.Sprintf("No running tunnels match pattern '%s'.", glob)
-			}
-			log.Errorf(msg)
+	}
+
+	var m string
+	if kind == daemon.Close {
+		m = "running "
+	}
+	if len(keep) == 0 {
+		// No tunnels to operate on, print error message
+		msg := fmt.Sprintf("No %stunnels match pattern '%s'.", m, args[0])
+		if len(args) > 1 {
+			msg = fmt.Sprintf("No %stunnels match any provided pattern.", m)
 		}
+		log.Fatalf(msg)
+	}
+
+	// If tunnels were matched, do print a warning for unmatched patterns
+	for _, pat := range notMatched {
+		log.Warningf("No %stunnels match pattern '%s'.", m, pat)
 	}
 
 	// Issue concurrent commands for all tunnels
-	done := make(chan struct{}, len(tunnels))
-	for _, t := range tunnels {
+	var wg sync.WaitGroup
+	for n := range keep {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			if kind == daemon.Open {
-				openTunnel(t)
+				openTunnel(tunnels[n])
 			} else if kind == daemon.Close {
-				closeTunnel(t)
+				closeTunnel(tunnels[n])
 			}
-			done <- struct{}{}
 		}()
 	}
-
-	for range tunnels {
-		<-done
-	}
+	wg.Wait()
 }
 
 func openTunnel(t *tunnel.Tunnel) {
@@ -131,7 +128,7 @@ func openTunnel(t *tunnel.Tunnel) {
 	if !resp.Success {
 		log.Errorf("Tunnel '%v' could not be opened: %v", t.Name, resp.Error)
 	} else {
-		log.Infof("Opened tunnel '%s': %s %v %s via %s", log.Green+t.Name+log.Reset,
+		log.Infof("Opened tunnel '%s': %s %v %s via %s.", log.Green+log.Bold+t.Name+log.Reset,
 			t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
 	}
 }
@@ -149,7 +146,7 @@ func closeTunnel(t *tunnel.Tunnel) {
 	if !resp.Success {
 		log.Errorf("Tunnel '%v' could not be closed: %v", t.Name, resp.Error)
 	} else {
-		log.Infof("Closed tunnel '%s'", log.Green+t.Name+log.Reset)
+		log.Infof("Closed tunnel '%s'.", log.Green+log.Bold+t.Name+log.Reset)
 	}
 }
 
@@ -226,32 +223,18 @@ func transmitCmd(cmd daemon.Cmd, resp any) error {
 	return nil
 }
 
-func filterGlob(ts map[string]*tunnel.Tunnel, pat string) (err error) {
+func filterGlob(
+	ts map[string]*tunnel.Tunnel, keep map[string]bool, pat string) (
+	n int, err error) {
 	// Fail early if pattern is malformed; if this passes we can
 	// ignore the error return value of the following matches
 	if _, err = filepath.Match(pat, ""); err != nil {
 		return
 	}
-	for n := range ts {
-		if m, _ := filepath.Match(pat, n); !m {
-			delete(ts, n)
-		}
-	}
-	return
-}
-
-func filterNames(ts map[string]*tunnel.Tunnel, names []string) (extra []string) {
-	keep := make(map[string]bool, len(names))
-	for _, n := range names {
-		if _, ok := ts[n]; ok {
-			keep[n] = true
-			continue
-		}
-		extra = append(extra, n)
-	}
-	for n := range ts {
-		if !keep[n] {
-			delete(ts, n)
+	for t := range ts {
+		if m, _ := filepath.Match(pat, t); m {
+			keep[t] = true
+			n++
 		}
 	}
 	return

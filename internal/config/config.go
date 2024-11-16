@@ -59,9 +59,11 @@ func Load() (*Config, error) {
 		if _, exists := m[t.Name]; exists {
 			return nil, fmt.Errorf("found duplicated tunnel name '%v'", t.Name)
 		}
-		if t.Name == "" || strings.Contains(t.Name, " ") || specialPrefix(t.Name) {
+		if t.Name == "" || strings.Contains(t.Name, " ") ||
+			specialPrefix(t.Name) || containsGlob(t.Name) {
 			return nil, fmt.Errorf("tunnel names cannot be empty, contain spaces,"+
-				" or start with special characters. Found '%v'", t.Name)
+				" start with special characters, or contain glob characters \"*?[\"."+
+				" Found '%v'", t.Name)
 		}
 		m[t.Name] = t
 	}
@@ -88,4 +90,8 @@ func specialPrefix(s string) bool {
 	return !(firstChar >= 'A' && firstChar <= 'Z' ||
 		firstChar >= 'a' && firstChar <= 'z' ||
 		firstChar >= '0' && firstChar <= '9')
+}
+
+func containsGlob(s string) bool {
+	return strings.ContainsAny(s, "*?[")
 }
