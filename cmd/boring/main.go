@@ -59,7 +59,7 @@ func printUsage() {
 	fmt.Println("Usage:")
 	fmt.Println("  boring list, l                List all tunnels")
 	fmt.Println(`  boring open, o (-a | <patterns>...)
-    <patterns>...               Open tunnels matching glob patterns
+    <patterns>...               Open tunnels matching any glob pattern
     -a, --all                   Open all tunnels`)
 	fmt.Println("  boring close, c               Close tunnels (same options as 'open')")
 	fmt.Println("  boring edit, e                Edit the configuration file")

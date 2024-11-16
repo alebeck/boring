@@ -18,10 +18,12 @@ A simple & reliable command line SSH tunnel manager.
 ## Usage
 ```
 Usage:
-  boring l, list                         List tunnels
-  boring o, open <name1> [<name2> ...]   Open specified tunnel(s)
-  boring c, close <name1> [<name2> ...]  Close specified tunnel(s)
-  boring e, edit                         Edit configuration file
+  boring list, l                List all tunnels
+  boring open, o (-a | <patterns>...)
+    <patterns>...               Open tunnels matching any glob pattern
+    -a, --all                   Open all tunnels
+  boring close, c               Close tunnels (same options as 'open')
+  boring edit, e                Edit the configuration file
 ```
 
 ## Configuration
@@ -47,11 +49,11 @@ identity = "~/.ssh/id_prod"  # will try default ones if not set
 # ... more tunnels
 ```
 
-Currently, supported options are: 
+Currently, supported options are:
 * `name`: Alias for the tunnel. Required.
 * `mode`: Mode of the tunnel. Can be either "local", "remote", "socks" or "socks-remote", default is "local"
-* `local`: Local address. Can be a "$host:$port" network address or a Unix socket. Can be abbreviated as "$port" in local and socks modes. Required in local, remote and socks modes. 
-* `remote`: Remote address. As above, but can be abbreviated in remote and socks-remote modes. Required in local, remote and socks-remote modes. 
+* `local`: Local address. Can be a "$host:$port" network address or a Unix socket. Can be abbreviated as "$port" in local and socks modes. Required in local, remote and socks modes.
+* `remote`: Remote address. As above, but can be abbreviated in remote and socks-remote modes. Required in local, remote and socks-remote modes.
 * `host`: Either a host alias which to match SSH configs to, or the actual hostname. Required.
 * `user`: SSH user. If not set, tries to read it from SSH config, defaulting to `$USER`.
 * `identity`: SSH identity file. If not set, tries to read it from SSH config and `ssh-agent`, defaulting to the default files.
