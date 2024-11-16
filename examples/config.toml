@@ -1,11 +1,19 @@
-# simple tunnel
+# simple tunnel, uses local (-L) mode by default
 [[tunnels]]
 name = "dev"
 local = "9000"
 remote = "localhost:9000"
 host = "dev-server"       # automatically matches host against SSH config
 
-# example of an explicit host (no SSH config)
+# simple remote (-R) tunnel; note that we can also use IP{v4,v6} addresses
+[[tunnels]]
+name = "dev-remote"
+local = "[::1]:9000"
+remote = "9000"
+host = "dev-server"
+mode = "remote"
+
+# example of an explicit host (doesn't use SSH config)
 [[tunnels]]
 name = "prod"
 local = "5001"
@@ -14,19 +22,28 @@ host = "prod.example.com"
 user = "root"
 identity = "~/.ssh/id_prod" # will try default ones if not set
 
-# example with unix sockets, and remote (-R) mode;
+# example using Unix sockets, and remote (-R) mode;
 # note that we can freely mix unix and TCP sockets
 [[tunnels]]
-name = "dev"
+name = "dev-unix"
 local = "/tmp/serve.sock"
 remote = "/tmp/listen.sock"
 host = "dev-server"
 mode = "remote"
 
-# example of a SOCKS5 proxy; this will setup a SOCKS server at
+# example of a SOCKS5 proxy; this will setup a SOCKS5 server at
 # port 9000 and forward all traffic through `dev-server`.
 [[tunnels]]
-name = "dev-proxy"
+name = "dev-prox"
 local = "9000"
 host = "dev-server"
 mode = "socks"
+
+# reverse SOCKS5 proxy; this will setup a SOCKS5 server at
+# port 9000 on `dev-server` and forward all traffic through
+# the local machine.
+[[tunnels]]
+name = "dev-rev-prox"
+remote = "9000"
+host = "dev-server"
+mode = "socks-remote"

@@ -18,13 +18,14 @@ A simple & reliable command line SSH tunnel manager.
 ## Usage
 ```
 Usage:
-  boring list,l                        List tunnels
-  boring open,o <name1> [<name2> ...]  Open specified tunnel(s)
-  boring close,c <name1> [<name2> ...] Close specified tunnel(s)
+  boring l, list                         List tunnels
+  boring o, open <name1> [<name2> ...]   Open specified tunnel(s)
+  boring c, close <name1> [<name2> ...]  Close specified tunnel(s)
+  boring e, edit                         Edit configuration file
 ```
 
 ## Configuration
-By default, `boring` reads its configuration from `~/.boring.toml`. The configuration is a simple TOML file describing your tunnels:
+By default, `boring` reads its configuration from `~/.boring.toml` on macOS and Windows, and from `$XDG_CONFIG_HOME/boring/.boring.toml` on Linux. If `$XDG_CONFIG_HOME` is not set, it defaults to `~/.config`. The location of the config file can be overriden by setting `$BORING_CONFIG`. The config is a simple TOML file describing your tunnels:
 
 ```toml
 # simple tunnel
@@ -46,21 +47,33 @@ identity = "~/.ssh/id_prod"  # will try default ones if not set
 # ... more tunnels
 ```
 
-Currently, supported options are: `name`, `local`, `remote`, `host`, `user`, `identity`, `port`, and `mode`. `host` either describes a host which to match SSH configs to, or if no matches found, the actual hostname. `mode` can be "local" for local, "remote" for remote and "socks" for dynamic forwarding; default is "local". The location of the config file can be changed by setting the `BORING_CONFIG` environment variable.
-
+Currently, supported options are: 
+* `name`: Alias for the tunnel. Required.
+* `mode`: Mode of the tunnel. Can be either "local", "remote", "socks" or "socks-remote", default is "local"
+* `local`: Local address. Can be a "$host:$port" network address or a Unix socket. Can be abbreviated as "$port" in local and socks modes. Required in local, remote and socks modes. 
+* `remote`: Remote address. As above, but can be abbreviated in remote and socks-remote modes. Required in local, remote and socks-remote modes. 
+* `host`: Either a host alias which to match SSH configs to, or the actual hostname. Required.
+* `user`: SSH user. If not set, tries to read it from SSH config, defaulting to `$USER`.
+* `identity`: SSH identity file. If not set, tries to read it from SSH config and `ssh-agent`, defaulting to the default files.
+* `port`: SSH port. If not set, tries to read it from SSH config, defaulting to `22`.
 
 ## Installation
-Either
-* Install via homebrew: `brew install boring`,
-* Get one of the pre-built binaries from the [releases page](https://github.com/alebeck/boring/releases), or
-* Build it yourself:
 
-  ```sh
-  git clone https://github.com/alebeck/boring && cd boring
-  ./build.sh
-  ```
+### Homebrew
+```
+brew install boring
+```
 
-For the last two options, you then need to move the binary to a location in your `$PATH`.
+### Pre-built
+Get one of the pre-built binaries from the [releases page](https://github.com/alebeck/boring/releases). Then move the binary to a location in your `$PATH`.
+
+### Build yourself
+```sh
+git clone https://github.com/alebeck/boring && cd boring
+./build.sh
+```
+
+Then move the binary to a location in your `$PATH`.
 
 <details>
   <summary>Note for Windows users</summary>
