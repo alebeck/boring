@@ -4,3 +4,5 @@
 * HTTP proxy?
 * scriptable hooks
 * documentation
+* bash/zsh completions
+* commented out example config as initial boring.toml
