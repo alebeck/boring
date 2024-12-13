@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -28,10 +30,16 @@ func prepare() (*config.Config, error) {
 
 	g.Go(func() error {
 		var err error
-		if err = ensureConfig(); err != nil {
-			return fmt.Errorf("could not create config file: %v", err)
+		if isTerm {
+			if err = ensureConfig(); err != nil {
+				return fmt.Errorf("could not create config file: %v", err)
+			}
 		}
 		if conf, err = config.Load(); err != nil {
+			if errors.Is(err, fs.ErrNotExist) && !isTerm {
+				conf = &config.Config{}
+				return nil
+			}
 			return fmt.Errorf("could not load config: %v", err)
 		}
 		return nil
@@ -208,7 +216,7 @@ func listTunnels() {
 		}
 	}
 
-	tbl.Print()
+	log.Emitf("%v", tbl)
 }
 
 func transmitCmd(cmd daemon.Cmd, resp any) error {

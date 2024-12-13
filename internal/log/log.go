@@ -4,27 +4,31 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime"
 	"sync"
 	"time"
 )
 
 const maxFileSize = 128 * 1024 // 128 KiB
 
-// ANSI escape codes
-var Reset, Bold, Red, Green, Yellow, Blue string
+var (
+	instance *logger
+	// ANSI escape codes
+	Reset, Bold, Red, Green, Yellow, Blue string
+)
 
-var writer io.Writer = &logWriter{inner: os.Stdout}
-var debug = os.Getenv("DEBUG") != ""
-
-// writer wraps an io.Writer and implements locking and rotation
-type logWriter struct {
-	inner io.Writer
-	mutex sync.Mutex
+// logger wraps an io.Writer, and implements locking and rotation
+type logger struct {
+	writer io.Writer
+	mutex  sync.Mutex
+	debug  bool
+	// whether to output "interactive" messages like infos, warnings and errors
+	interactive bool
 }
 
-func init() {
-	if runtime.GOOS != "windows" {
+func Init(w io.Writer, interactive bool, colors bool) {
+	debug := os.Getenv("DEBUG") != ""
+	instance = &logger{writer: w, debug: debug, interactive: interactive}
+	if colors {
 		Reset = "\033[0m"
 		Bold = "\033[1m"
 		Red = "\033[31m"
@@ -35,15 +39,15 @@ func init() {
 }
 
 // Write implements io.Writer, locking and rotating as needed
-func (w *logWriter) Write(bytes []byte) (int, error) {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
-	w.tryRotate()
-	return w.inner.Write(bytes)
+func (l *logger) Write(bytes []byte) (int, error) {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	l.tryRotate()
+	return l.writer.Write(bytes)
 }
 
-func (w *logWriter) tryRotate() {
-	f, ok := w.inner.(*os.File)
+func (l *logger) tryRotate() {
+	f, ok := l.writer.(*os.File)
 	if !ok {
 		// Not a file, can't rotate
 		return
@@ -64,42 +68,60 @@ func (w *logWriter) tryRotate() {
 func timestamp() string {
 	currentTime := time.Now()
 	format := "15:04:05"
-	if debug {
+	if instance.debug {
 		format = "15:04:05.000"
 	}
 	return "[" + currentTime.Format(format) + "]"
 }
 
 func Debugf(format string, a ...any) {
-	if !debug {
+	if !instance.debug || !instance.interactive {
 		return
 	}
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(writer, "%s DEBUG %s\n", timestamp(), message)
+	fmt.Fprintf(instance, "%s DEBUG %s\n", timestamp(), message)
 }
 
 func Infof(format string, a ...any) {
+	if !instance.interactive {
+		return
+	}
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(writer, "%s %sINFO%s %s\n", timestamp(), Bold+Blue, Reset, message)
+	fmt.Fprintf(instance, "%s %sINFO%s %s\n", timestamp(), Bold+Blue, Reset, message)
 }
 
 func Warningf(format string, a ...any) {
+	if !instance.interactive {
+		return
+	}
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(writer, "%s %sWARNING%s %s\n", timestamp(), Bold+Yellow, Reset, message)
+	fmt.Fprintf(instance, "%s %sWARNING%s %s\n", timestamp(), Bold+Yellow, Reset, message)
 }
 
 func Errorf(format string, a ...any) {
+	if !instance.interactive {
+		return
+	}
 	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(writer, "%s %sERROR%s %s\n", timestamp(), Bold+Red, Reset, message)
+	fmt.Fprintf(instance, "%s %sERROR%s %s\n", timestamp(), Bold+Red, Reset, message)
 }
 
 func Fatalf(format string, a ...any) {
-	message := fmt.Sprintf(format, a...)
-	fmt.Fprintf(writer, "%s %sFATAL%s %s\n", timestamp(), Bold+Red, Reset, message)
+	if instance.interactive {
+		message := fmt.Sprintf(format, a...)
+		fmt.Fprintf(instance, "%s %sFATAL%s %s\n", timestamp(), Bold+Red, Reset, message)
+	}
 	os.Exit(1)
 }
 
-// SetOutput sets the io.Writer to which log messages are written
-func SetOutput(w io.Writer) {
-	writer = &logWriter{inner: w}
+// Printf writes a message without any formatting
+func Printf(format string, a ...any) {
+	if instance.interactive {
+		fmt.Fprintf(instance, format, a...)
+	}
+}
+
+// Emitf emits data, i.e. it should not be suppressed in non-interactive mode
+func Emitf(format string, a ...any) {
+	fmt.Fprintf(instance, format, a...)
 }

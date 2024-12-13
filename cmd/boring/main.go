@@ -3,19 +3,25 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/alebeck/boring/internal/daemon"
 	"github.com/alebeck/boring/internal/log"
+	"golang.org/x/term"
 )
+
+var isTerm = term.IsTerminal(int(os.Stdout.Fd()))
 
 var version, commit string
 
 func main() {
+	// Run in daemon mode?
 	if len(os.Args) == 2 && os.Args[1] == daemon.Flag {
-		// Run in daemon mode
 		daemon.Run()
 		os.Exit(0)
 	}
+
+	initLogging()
 
 	if len(os.Args) < 2 {
 		printUsage()
@@ -40,10 +46,17 @@ func main() {
 	case "edit", "e":
 		openConfig()
 	default:
-		fmt.Println("Unknown command:", os.Args[1])
+		log.Printf("Unknown command: %v\n", os.Args[1])
 		printUsage()
 		os.Exit(1)
 	}
+}
+
+func initLogging() {
+	// Use stdout for outputs, indicate if it's an interactive session.
+	// We don't use colors under Windows for now.
+	useColors := isTerm && runtime.GOOS != "windows"
+	log.Init(os.Stdout, isTerm, useColors)
 }
 
 func printUsage() {
@@ -55,12 +68,12 @@ func printUsage() {
 		}
 	}
 
-	fmt.Printf("boring %s\n", v)
-	fmt.Println("Usage:")
-	fmt.Println("  boring list, l                List all tunnels")
-	fmt.Println(`  boring open, o (-a | <patterns>...)
+	log.Printf("boring %s\n", v)
+	log.Printf("Usage:\n")
+	log.Printf("  boring list, l                List all tunnels\n")
+	log.Printf(`  boring open, o (-a | <patterns>...)
     <patterns>...               Open tunnels matching any glob pattern
-    -a, --all                   Open all tunnels`)
-	fmt.Println("  boring close, c               Close tunnels (same options as 'open')")
-	fmt.Println("  boring edit, e                Edit the configuration file")
+    -a, --all                   Open all tunnels` + "\n")
+	log.Printf("  boring close, c               Close tunnels (same options as 'open')\n")
+	log.Printf("  boring edit, e                Edit the configuration file\n")
 }

@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
 
@@ -28,7 +29,7 @@ func newState() *state {
 }
 
 func Run() {
-	setupLogger(logFile)
+	initLogging(logFile)
 	log.Infof("Daemon starting")
 
 	l, err := setupListener()
@@ -78,13 +79,13 @@ func cleanup(s *state, wg *sync.WaitGroup) {
 	}
 }
 
-func setupLogger(path string) {
+func initLogging(path string) {
 	logFile, err := os.OpenFile(
 		path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		log.Fatalf("Failed to open log file: %v", err)
 	}
-	log.SetOutput(logFile)
+	log.Init(logFile, true, runtime.GOOS != "windows")
 }
 
 func setupListener() (l net.Listener, err error) {

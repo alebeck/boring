@@ -49,7 +49,7 @@ func getConfigHome() string {
 func Load() (*Config, error) {
 	var config Config
 	if _, err := toml.DecodeFile(Path, &config); err != nil {
-		return nil, fmt.Errorf("could not decode config file: %v", err)
+		return nil, fmt.Errorf("could not decode config file: %w", err)
 	}
 
 	// Create a map of tunnel names to tunnel pointers for easy lookup
