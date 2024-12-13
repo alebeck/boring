@@ -50,19 +50,23 @@ identity = "~/.ssh/id_prod"  # will try default ones if not set
 ```
 
 Currently, supported options are:
-* `name`: Alias for the tunnel. Required.
-* `mode`: Mode of the tunnel. Can be either "local", "remote", "socks" or "socks-remote", default is "local"
-* `local`: Local address. Can be a "$host:$port" network address or a Unix socket. Can be abbreviated as "$port" in local and socks modes. Required in local, remote and socks modes.
-* `remote`: Remote address. As above, but can be abbreviated in remote and socks-remote modes. Required in local, remote and socks-remote modes.
-* `host`: Either a host alias which to match SSH configs to, or the actual hostname. Required.
-* `user`: SSH user. If not set, tries to read it from SSH config, defaulting to `$USER`.
-* `identity`: SSH identity file. If not set, tries to read it from SSH config and `ssh-agent`, defaulting to the default files.
-* `port`: SSH port. If not set, tries to read it from SSH config, defaulting to `22`.
+
+| **Option**    | **Description**                                                                                                     |
+|---------------|---------------------------------------------------------------------------------------------------------------------|
+| `name`        | Alias for the tunnel. **Required.**                                                                                 |
+| `mode`        | Mode of the tunnel. Can be either `"local"`, `"remote"`, `"socks"` or `"socks-remote"`. Default is `"local"`.       |
+| `local`       | Local address. Can be a `"$host:$port"` network address or a Unix socket. Can be abbreviated as `"$port"` in local and socks modes. **Required** in local, remote and socks modes. |
+| `remote`      | Remote address. As above, but can be abbreviated in remote and socks-remote modes. **Required** in local, remote and socks-remote modes. |
+| `host`        | Either a host alias that matches SSH configs or the actual hostname. **Required.**                            |
+| `user`        | SSH user. If not set, tries to read it from SSH config, defaulting to `$USER`.                                       |
+| `identity`    | SSH identity file. If not set, tries to read it from SSH config and `ssh-agent`, defaulting to standard identity files.     |
+| `port`        | SSH port. If not set, tries to read it from SSH config, defaulting to `22`.                                          |
+
 
 ## Installation
 
 ### Homebrew
-```
+```sh
 brew install boring
 ```
 
@@ -88,3 +92,21 @@ Then move the binary to a location in your `$PATH`.
 
   Then, move the executable to a location in your `%PATH%`.
 </details>
+
+### Shell completion
+Shell completion scripts are available for `bash`, `zsh`, and `fish`. To install them, add the following to your shell's config file:
+
+#### Bash
+```sh
+eval "$(boring --shell bash)"
+```
+
+#### Zsh
+```sh
+source <(boring --shell zsh)
+```
+
+#### Fish
+```sh
+boring --shell fish | source
+```

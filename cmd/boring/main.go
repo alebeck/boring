@@ -5,6 +5,7 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/alebeck/boring/completions"
 	"github.com/alebeck/boring/internal/daemon"
 	"github.com/alebeck/boring/internal/log"
 	"golang.org/x/term"
@@ -20,6 +21,9 @@ func main() {
 		daemon.Run()
 		os.Exit(0)
 	}
+
+	// Emit --shell completions if requested, and exit
+	handleCompletions()
 
 	initLogging()
 
@@ -50,6 +54,22 @@ func main() {
 		printUsage()
 		os.Exit(1)
 	}
+}
+
+func handleCompletions() {
+	if len(os.Args) != 3 || os.Args[1] != "--shell" {
+		return
+	}
+	switch os.Args[2] {
+	case "bash":
+		fmt.Print(completions.Bash)
+	case "zsh":
+		fmt.Print(completions.Zsh)
+	case "fish":
+		fmt.Print(completions.Fish)
+	default:
+	}
+	os.Exit(0)
 }
 
 func initLogging() {
