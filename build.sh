@@ -10,4 +10,3 @@ go build \
     -ldflags "-X main.version=$tag -X main.commit=$commit" \
     -o $dir/boring \
     ./cmd/boring
-
