@@ -7,6 +7,6 @@ dir=${1:-./bin}
 mkdir -p $dir
 
 go build \
-    -ldflags "-X main.version=$tag -X main.commit=$commit" \
+    -ldflags "-s -w -X main.version=$tag -X main.commit=$commit" \
     -o $dir/boring \
     ./cmd/boring
