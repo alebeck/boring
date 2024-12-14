@@ -14,14 +14,14 @@ const defaultConfig = `# An example tunnel is defined below.
 # For more examples, please visit the project's GitHub page.
 # All lines starting with '#' are comments.
 
-#[[tunnels]]
-#name = "dev"  # Name for the tunnel
-#local = 9000  # Local address to listen on
-#remote = "localhost:9000"  # Remote address to forward to
-#host = "dev-server"  # Hostname of the server, tries to match against ssh config
-#port = 22  # (Optional) Server port, defaults to 22
-#user = "neo"  # (Optional) Username, tries ssh config and defaults to $USER
-#identity = "~/.ssh/id_dev"  # (Optional) Key file, tries ssh config and defaults to default keys
+# [[tunnels]]
+# name = "dev"  # Name for the tunnel
+# local = 9000  # Local address to listen on
+# remote = "localhost:9000"  # Remote address to forward to
+# host = "dev-server"  # Hostname of the server, tries to match against ssh config
+# port = 22  # (Optional) Server port, defaults to 22
+# user = "neo"  # (Optional) Username, tries ssh config and defaults to $USER
+# identity = "~/.ssh/id_dev"  # (Optional) Key file, tries ssh config and defaults to default keys
 
 `
 
