@@ -3,6 +3,6 @@
 * HTTP proxy?
 * scriptable hooks
 * documentation
-* bash/zsh completions
-* commented out example config as initial boring.toml
 * support HostbasedAcceptedAlgorithms, PubkeyAcceptedAlgorithms, CASignatureAlgorithms
+* Logo
+* Somehow monitor network config changes
