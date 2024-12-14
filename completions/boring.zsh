@@ -5,6 +5,7 @@ _boring() {
         "close"
         "list"
         "edit"
+        "version"
     )
 
     _boring_get_names() {

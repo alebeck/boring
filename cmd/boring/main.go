@@ -49,6 +49,8 @@ func main() {
 		listTunnels()
 	case "edit", "e":
 		openConfig()
+	case "version", "v":
+		printVersion()
 	default:
 		log.Printf("Unknown command: %v\n", os.Args[1])
 		printUsage()
@@ -79,7 +81,7 @@ func initLogging() {
 	log.Init(os.Stdout, isTerm, useColors)
 }
 
-func printUsage() {
+func printVersion() {
 	v := version
 	if v == "" {
 		v = "snapshot"
@@ -87,8 +89,11 @@ func printUsage() {
 			v += fmt.Sprintf(" (#%s)", commit)
 		}
 	}
+	log.Emitf("boring %s\n", v)
+}
 
-	log.Printf("boring %s\n", v)
+func printUsage() {
+	log.Printf("The `boring` SSH tunnel manager.\n\n")
 	log.Printf("Usage:\n")
 	log.Printf("  boring list, l                List all tunnels\n")
 	log.Printf(`  boring open, o (-a | <patterns>...)
@@ -96,4 +101,5 @@ func printUsage() {
     -a, --all                   Open all tunnels` + "\n")
 	log.Printf("  boring close, c               Close tunnels (same options as 'open')\n")
 	log.Printf("  boring edit, e                Edit the configuration file\n")
+	log.Printf("  boring version, v             Show the version number\n")
 }

@@ -2,7 +2,7 @@ _boring() {
     local cur cmd
     cur="${COMP_WORDS[COMP_CWORD]}"
 
-    local commands=("open" "close" "list" "edit")
+    local commands=("open" "close" "list" "edit" "version")
 
     _boring_get_names() {
         local status="$1"
