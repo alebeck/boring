@@ -12,13 +12,13 @@ import (
 func Send(s any, conn net.Conn) error {
 	data, err := json.Marshal(s)
 	if err != nil {
-		return fmt.Errorf("failed to serialize response: %v", err)
+		return fmt.Errorf("failed to serialize: %v", err)
 	}
 	log.Debugf("Sending: %v", string(data))
 
 	_, err = conn.Write(append(data, '\n'))
 	if err != nil {
-		return fmt.Errorf("failed to send response: %v", err)
+		return fmt.Errorf("failed to send: %v", err)
 	}
 	return nil
 }
@@ -33,7 +33,7 @@ func Receive(s any, conn net.Conn) error {
 
 	err = json.Unmarshal(data, s)
 	if err != nil {
-		return fmt.Errorf("failed to deserialize command: %w", err)
+		return fmt.Errorf("failed to deserialize: %w", err)
 	}
 	return nil
 }
