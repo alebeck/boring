@@ -1,3 +1,5 @@
+#compdef boring
+
 _boring() {
     local -a commands
     commands=(
@@ -55,4 +57,8 @@ _boring() {
     esac
 }
 
-compdef _boring boring
+if [ "$funcstack[1]" = "_boring" ]; then
+    _boring
+else
+    compdef _boring boring
+fi
