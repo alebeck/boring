@@ -48,7 +48,7 @@ func main() {
 	case "list", "l":
 		listTunnels()
 	case "edit", "e":
-		openConfig()
+		editConfig()
 	case "version", "v":
 		printVersion()
 	default:
