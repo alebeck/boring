@@ -94,7 +94,11 @@ Then move the binary to a location in your `$PATH`.
 </details>
 
 ### Shell completion
-Shell completion scripts are available for `bash`, `zsh`, and `fish`. To install them, add the following to your shell's config file:
+Shell completion scripts are available for `bash`, `zsh`, and `fish`. 
+
+If `boring` was installed via Homebrew, and you have Homebrew completions enabled, nothing needs to be done. 
+
+Otherwise, install completions by adding the following to your shell's config file:
 
 #### Bash
 ```sh
