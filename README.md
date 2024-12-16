@@ -24,6 +24,7 @@ Usage:
     -a, --all                   Open all tunnels
   boring close, c               Close tunnels (same options as 'open')
   boring edit, e                Edit the configuration file
+  boring version, v             Show the version number
 ```
 
 ## Configuration
