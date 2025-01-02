@@ -35,10 +35,23 @@ type jumpSpec struct {
 	port int
 }
 
+type keyCheck int
+
+const (
+	// Reject unknown hosts by default, this corresponds to "yes" and "ask"
+	// options in ssh_config. Note that "ask" is treated the same as "yes",
+	// as boring is not meant to be interactive.
+	strict keyCheck = iota
+	// Accepts all hosts, this corresponds to "no" and "off" options
+	off
+	// TODO: support "accept-new" option?
+)
+
 type sshConfig struct {
 	user            string
 	hostName        string
 	port            int
+	keyCheck        keyCheck
 	identityFiles   []string
 	knownHostsFiles []string
 	ciphers         []string
@@ -97,6 +110,17 @@ func parseSSHConfig(alias string) (*sshConfig, error) {
 	hosts = append(hosts, d.GetAll(alias, "UserKnownHostsFile")...)
 	for _, h := range hosts {
 		c.knownHostsFiles = append(c.knownHostsFiles, strings.Split(h, " ")...)
+	}
+
+	s := d.Get(alias, "StrictHostKeyChecking")
+	if s == "no" || s == "off" {
+		c.keyCheck = off
+	} else if s == "accept-new" {
+		log.Warningf(
+			"StrictHostKeyChecking 'accept-new' not supported, using 'yes'")
+	} else if s != "yes" && s != "ask" {
+		return nil, fmt.Errorf(
+			"unsupported StrictHostKeyChecking option '%v'", s)
 	}
 
 	c.ciphers = split(d.Get(alias, "Ciphers"))
@@ -196,16 +220,21 @@ func (sc *sshConfig) toJumpsImpl(ignoreIntermediate bool, depth int) ([]jump, er
 	}
 	log.Debugf("Trying %d key file(s)", len(signers))
 
-	var hosts []string
-	for _, k := range sc.knownHostsFiles {
-		k = paths.ReplaceTilde(k)
-		if _, err := os.Stat(k); err == nil {
-			hosts = append(hosts, k)
+	var keyCallback ssh.HostKeyCallback
+	if sc.keyCheck == strict {
+		var hosts []string
+		for _, k := range sc.knownHostsFiles {
+			k = paths.ReplaceTilde(k)
+			if _, err := os.Stat(k); err == nil {
+				hosts = append(hosts, k)
+			}
 		}
-	}
-	knownHostsCallback, err := knownhosts.New(hosts...)
-	if err != nil {
-		return nil, err
+		var err error
+		if keyCallback, err = knownhosts.New(hosts...); err != nil {
+			return nil, fmt.Errorf("knownhosts: %v", err)
+		}
+	} else if sc.keyCheck == off {
+		keyCallback = ssh.InsecureIgnoreHostKey()
 	}
 
 	clientConf := &ssh.ClientConfig{
@@ -217,7 +246,7 @@ func (sc *sshConfig) toJumpsImpl(ignoreIntermediate bool, depth int) ([]jump, er
 		User:              sc.user,
 		Auth:              []ssh.AuthMethod{ssh.PublicKeys(signers...)},
 		HostKeyAlgorithms: sc.hostKeyAlgos,
-		HostKeyCallback:   knownHostsCallback,
+		HostKeyCallback:   keyCallback,
 		Timeout:           sshConnTimeout,
 	}
 
