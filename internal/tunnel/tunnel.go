@@ -37,7 +37,7 @@ type TunnelDesc struct {
 
 type Tunnel struct {
 	prepared   bool
-	connSpecs  []connSpec
+	jumps      []jump
 	Closed     chan struct{}
 	stop       chan struct{}
 	listener   net.Listener
@@ -115,8 +115,8 @@ func (t *Tunnel) prepare() error {
 		}
 	}
 
-	// Make connection specifications from ssh config
-	if t.connSpecs, err = sc.toConnSpecs(); err != nil {
+	// Infer series of jumps from ssh config
+	if t.jumps, err = sc.toJumps(); err != nil {
 		return fmt.Errorf("could not specify connection to %v: %v", sc.hostName, err)
 	}
 
@@ -137,7 +137,7 @@ func (t *Tunnel) prepare() error {
 }
 
 func (t *Tunnel) makeClient() error {
-	if len(t.connSpecs) == 0 {
+	if len(t.jumps) == 0 {
 		return fmt.Errorf("no connections specified")
 	}
 
@@ -145,7 +145,7 @@ func (t *Tunnel) makeClient() error {
 	var wg sync.WaitGroup
 
 	// Connect through all jump hosts
-	for _, j := range t.connSpecs {
+	for _, j := range t.jumps {
 		addr := fmt.Sprintf("%v:%v", j.hostName, j.port)
 		n, err := wrapClient(c, addr, j.ClientConfig)
 		if err != nil {

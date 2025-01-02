@@ -29,7 +29,7 @@ var (
 	algos          = []string{"Ciphers", "MACs", "HostKeyAlgorithms", "KexAlgorithms"}
 )
 
-type proxyJump struct {
+type jumpSpec struct {
 	host string
 	user string
 	port int
@@ -45,11 +45,11 @@ type sshConfig struct {
 	macs            []string
 	hostKeyAlgos    []string
 	kexAlgos        []string
-	jumps           []*proxyJump
+	jumps           []*jumpSpec
 }
 
-// connSpec holds data needed to establish an SSH connection
-type connSpec struct {
+// jump holds information needed to establish a single SSH jump
+type jump struct {
 	hostName string
 	port     int
 	*ssh.ClientConfig
@@ -64,7 +64,7 @@ type sshConfigSpec struct {
 	systemConfigSpec *ssh_config.Config
 }
 
-func parseProxyJump(s string) (*proxyJump, error) {
+func parseProxyJump(s string) (*jumpSpec, error) {
 	// Format: [user@]host[:port]
 	// TODO: use regex?
 	var portInt int
@@ -79,7 +79,7 @@ func parseProxyJump(s string) (*proxyJump, error) {
 	if !fnd {
 		user, host = host, user
 	}
-	return &proxyJump{host: host, user: user, port: portInt}, nil
+	return &jumpSpec{host: host, user: user, port: portInt}, nil
 }
 
 func parseSSHConfig(alias string) (*sshConfig, error) {
@@ -122,12 +122,12 @@ func parseSSHConfig(alias string) (*sshConfig, error) {
 	return c, nil
 }
 
-// toConnSpecs creates an ordered series of connSpecs from an sshConfig
-func (sc *sshConfig) toConnSpecs() ([]connSpec, error) {
-	return sc.toConnSpecsImpl(false, 0)
+// toJumps creates an ordered series of jumps from an sshConfig
+func (sc *sshConfig) toJumps() ([]jump, error) {
+	return sc.toJumpsImpl(false, 0)
 }
 
-func (sc *sshConfig) toConnSpecsImpl(ignoreJumps bool, depth int) ([]connSpec, error) {
+func (sc *sshConfig) toJumpsImpl(ignoreIntermediate bool, depth int) ([]jump, error) {
 	if depth > maxJumpRecursions {
 		return nil, fmt.Errorf("maximum jump recursions exceeded")
 	}
@@ -136,11 +136,11 @@ func (sc *sshConfig) toConnSpecsImpl(ignoreJumps bool, depth int) ([]connSpec, e
 		return nil, err
 	}
 
-	if ignoreJumps {
+	if ignoreIntermediate {
 		sc.jumps = nil
 	}
 
-	var s []connSpec
+	var s []jump
 
 	for i, j := range sc.jumps {
 		jc, err := parseSSHConfig(j.host)
@@ -158,7 +158,7 @@ func (sc *sshConfig) toConnSpecsImpl(ignoreJumps bool, depth int) ([]connSpec, e
 
 		// Recursively connect to first jump host, ignore jumps for subsequent connections;
 		// this corresponds to ssh(1) behavior
-		js, err := jc.toConnSpecsImpl(i != 0, depth+1)
+		js, err := jc.toJumpsImpl(i != 0, depth+1)
 		if err != nil {
 			return nil, err
 		}
@@ -221,7 +221,7 @@ func (sc *sshConfig) toConnSpecsImpl(ignoreJumps bool, depth int) ([]connSpec, e
 		Timeout:           sshConnTimeout,
 	}
 
-	new := connSpec{hostName: sc.hostName, port: sc.port, ClientConfig: clientConf}
+	new := jump{hostName: sc.hostName, port: sc.port, ClientConfig: clientConf}
 	s = append(s, new)
 
 	return s, nil
