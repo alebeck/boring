@@ -68,7 +68,7 @@ func controlTunnels(args []string, kind daemon.CmdKind) {
 
 	conf, err := prepare()
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatalf("%s", err.Error())
 	}
 
 	// Get available tunnels for requested command
@@ -103,7 +103,7 @@ func controlTunnels(args []string, kind daemon.CmdKind) {
 		if len(args) > 1 {
 			msg = fmt.Sprintf("No %stunnels match any provided pattern.", m)
 		}
-		log.Fatalf(msg)
+		log.Fatalf("%s", msg)
 	}
 
 	// If tunnels were matched, do print a warning for unmatched patterns
@@ -127,7 +127,7 @@ func controlTunnels(args []string, kind daemon.CmdKind) {
 	wg.Wait()
 }
 
-func openTunnel(t *tunnel.Tunnel) {
+func openTunnel(t *tunnel.TunnelDesc) {
 	var resp daemon.Resp
 	cmd := daemon.Cmd{Kind: daemon.Open, Tunnel: *t}
 	if err := transmitCmd(cmd, &resp); err != nil {
@@ -147,9 +147,9 @@ func openTunnel(t *tunnel.Tunnel) {
 	}
 }
 
-func closeTunnel(t *tunnel.Tunnel) {
-	// The daemon only needs the name for closing, so simplify
-	t = &tunnel.Tunnel{Name: t.Name}
+func closeTunnel(t *tunnel.TunnelDesc) {
+	// Daemon only needs the name, so simplify
+	t = &tunnel.TunnelDesc{Name: t.Name}
 
 	var resp daemon.Resp
 	cmd := daemon.Cmd{Kind: daemon.Close, Tunnel: *t}
@@ -164,16 +164,16 @@ func closeTunnel(t *tunnel.Tunnel) {
 	}
 }
 
-func getRunningTunnels() (map[string]*tunnel.Tunnel, error) {
+func getRunningTunnels() (map[string]*tunnel.TunnelDesc, error) {
 	var resp daemon.Resp
 	cmd := daemon.Cmd{Kind: daemon.List}
 	if err := transmitCmd(cmd, &resp); err != nil {
 		return nil, err
 	}
 	if !resp.Success {
-		return nil, fmt.Errorf(resp.Error)
+		return nil, fmt.Errorf("%s", resp.Error)
 	}
-	m := make(map[string]*tunnel.Tunnel, len(resp.Tunnels))
+	m := make(map[string]*tunnel.TunnelDesc, len(resp.Tunnels))
 	for _, t := range resp.Tunnels {
 		m[t.Name] = &t
 	}
@@ -183,7 +183,7 @@ func getRunningTunnels() (map[string]*tunnel.Tunnel, error) {
 func listTunnels() {
 	conf, err := prepare()
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatalf("%s", err.Error())
 	}
 
 	ts, err := getRunningTunnels()
@@ -238,7 +238,7 @@ func transmitCmd(cmd daemon.Cmd, resp any) error {
 }
 
 func filterGlob(
-	ts map[string]*tunnel.Tunnel, keep map[string]bool, pat string) (
+	ts map[string]*tunnel.TunnelDesc, keep map[string]bool, pat string) (
 	n int, err error) {
 	// Fail early if pattern is malformed; if this passes we can
 	// ignore the error return value of the following matches

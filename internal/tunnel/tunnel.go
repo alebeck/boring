@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os/user"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,35 +22,49 @@ const (
 	keepAliveInterval = 2 * time.Minute
 )
 
-type Tunnel struct {
-	Name          string         `toml:"name" json:"name"`
-	LocalAddress  StringOrInt    `toml:"local" json:"local"`
-	RemoteAddress StringOrInt    `toml:"remote" json:"remote"`
-	Host          string         `toml:"host" json:"host"`
-	User          string         `toml:"user" json:"user"`
-	IdentityFile  string         `toml:"identity" json:"identity"`
-	Port          int            `toml:"port" json:"port"`
-	Mode          Mode           `toml:"mode" json:"mode"`
-	Status        Status         `toml:"-" json:"status"`
-	LastConn      time.Time      `toml:"-" json:"last_conn"`
-	Closed        chan struct{}  `toml:"-" json:"-"`
-	rc            *runConfig     `toml:"-" json:"-"`
-	client        *ssh.Client    `toml:"-" json:"-"`
-	listener      net.Listener   `toml:"-" json:"-"`
-	stop          chan struct{}  `toml:"-" json:"-"`
-	wg            sync.WaitGroup `toml:"-" json:"-"`
+type TunnelDesc struct {
+	Name          string      `toml:"name" json:"name"`
+	LocalAddress  StringOrInt `toml:"local" json:"local"`
+	RemoteAddress StringOrInt `toml:"remote" json:"remote"`
+	Host          string      `toml:"host" json:"host"`
+	User          string      `toml:"user" json:"user"`
+	IdentityFile  string      `toml:"identity" json:"identity"`
+	Port          int         `toml:"port" json:"port"`
+	Mode          Mode        `toml:"mode" json:"mode"`
+	Status        Status      `toml:"-" json:"status"`
+	LastConn      time.Time   `toml:"-" json:"last_conn"`
 }
 
-func (t *Tunnel) Open() error {
-	var err error
-	if t.rc == nil {
-		if err := t.makeRunConfig(); err != nil {
-			return fmt.Errorf("could not make run config: %v", err)
+type Tunnel struct {
+	prepared   bool
+	connSpecs  []connSpec
+	Closed     chan struct{}
+	stop       chan struct{}
+	listener   net.Listener
+	wg         sync.WaitGroup
+	client     *ssh.Client
+	localAddr  *address
+	remoteAddr *address
+	*TunnelDesc
+}
+
+type address struct {
+	addr, net string
+}
+
+func FromDesc(desc *TunnelDesc) *Tunnel {
+	return &Tunnel{TunnelDesc: desc}
+}
+
+func (t *Tunnel) Open() (err error) {
+	if !t.prepared {
+		if err = t.prepare(); err != nil {
+			return err
 		}
 	}
 
 	if err = t.makeClient(); err != nil {
-		return fmt.Errorf("could not setup SSH client: %v", err)
+		return fmt.Errorf("cannot make SSH client: %v", err)
 	}
 	log.Debugf("%v: connected to server", t.Name)
 
@@ -66,21 +83,122 @@ func (t *Tunnel) Open() error {
 	log.Infof("%v: opened tunnel", t.Name)
 	t.Status = Open
 	t.LastConn = time.Now()
+	return
+}
+
+func (t *Tunnel) prepare() error {
+	sc, err := parseSSHConfig(t.Host)
+	if err != nil {
+		return fmt.Errorf("could not parse SSH config: %v", err)
+	}
+
+	// Override values manually set by user
+	if t.User != "" {
+		sc.user = t.User
+	}
+	if t.Port != 0 {
+		sc.port = t.Port
+	}
+	if t.IdentityFile != "" {
+		sc.identityFiles = []string{t.IdentityFile}
+	}
+
+	// If t.Host could not be resolved from ssh config, take it literally
+	if sc.hostName == "" {
+		sc.hostName = t.Host
+	}
+
+	// Use $USER if still no user specified
+	if sc.user == "" {
+		if u, err := user.Current(); err == nil {
+			sc.user = u.Username
+		}
+	}
+
+	// Make connection specifications from ssh config
+	if t.connSpecs, err = sc.toConnSpecs(); err != nil {
+		return fmt.Errorf("could not specify connection to %v: %v", sc.hostName, err)
+	}
+
+	allowShort := t.Mode == Remote || t.Mode == RemoteSocks
+	t.remoteAddr, err = parseAddr(string(t.RemoteAddress), allowShort)
+	if err != nil {
+		return fmt.Errorf("remote address: %v", err)
+	}
+
+	t.localAddr, err = parseAddr(string(t.LocalAddress), !allowShort)
+	if err != nil {
+		return fmt.Errorf("local address: %v", err)
+	}
+
+	t.prepared = true
+
 	return nil
 }
 
 func (t *Tunnel) makeClient() error {
-	var err error
-	addr := fmt.Sprintf("%v:%v", t.rc.hostName, t.rc.port)
-	t.client, err = ssh.Dial("tcp", addr, t.rc.clientConfig)
-	return err
+	if len(t.connSpecs) == 0 {
+		return fmt.Errorf("no connections specified")
+	}
+
+	var c *ssh.Client
+	var wg sync.WaitGroup
+
+	// Connect through all jump hosts
+	for _, j := range t.connSpecs {
+		addr := fmt.Sprintf("%v:%v", j.hostName, j.port)
+		n, err := wrapClient(c, addr, j.ClientConfig)
+		if err != nil {
+			safeClose(c)
+			// Wait for all connections established until here to close
+			wg.Wait()
+			return fmt.Errorf("could not connect to host %v: %v", addr, err)
+		}
+		log.Debugf("%v: connected to host %v (client %p)", t.Name, j.hostName, n)
+
+		// Add new client to wait group
+		wg.Add(1)
+		go func(n, c *ssh.Client) {
+			defer wg.Done()
+			n.Wait()
+			log.Debugf("%v: closed client %p to %v", t.Name, n, n.RemoteAddr())
+			// Close previous client when new one closes, this propagates
+			safeClose(c)
+		}(n, c)
+
+		c = n
+	}
+
+	// Wait for all wrapped clients to close in case of tunnel closing or reconnection
+	go t.waitFor(func() { wg.Wait() })
+
+	t.client = c
+	return nil
+}
+
+func wrapClient(old *ssh.Client, addr string, conf *ssh.ClientConfig) (*ssh.Client, error) {
+	if old == nil {
+		return ssh.Dial("tcp", addr, conf)
+	}
+
+	conn, err := old.Dial("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+
+	ncc, chans, reqs, err := ssh.NewClientConn(conn, addr, conf)
+	if err != nil {
+		return nil, err
+	}
+
+	return ssh.NewClient(ncc, chans, reqs), nil
 }
 
 func (t *Tunnel) makeListener() (err error) {
 	if t.Mode == Remote || t.Mode == RemoteSocks {
-		t.listener, err = t.client.Listen(t.rc.remoteNet, t.rc.remoteAddress)
+		t.listener, err = t.client.Listen(t.remoteAddr.net, t.remoteAddr.addr)
 	} else {
-		t.listener, err = net.Listen(t.rc.localNet, t.rc.localAddress)
+		t.listener, err = net.Listen(t.localAddr.net, t.localAddr.addr)
 	}
 	return
 }
@@ -96,7 +214,6 @@ func (t *Tunnel) run() {
 	disconn := make(chan struct{})
 	go func() {
 		t.client.Wait()
-		log.Infof("%v: client closed", t.Name)
 		close(disconn)
 	}()
 
@@ -161,11 +278,11 @@ func (t *Tunnel) handleForward() {
 			return
 		}
 		go t.waitFor(func() {
-			netw, addr := t.rc.remoteNet, t.rc.remoteAddress
+			net, addr := t.remoteAddr.net, t.remoteAddr.addr
 			if t.Mode == Remote || t.Mode == RemoteSocks {
-				netw, addr = t.rc.localNet, t.rc.localAddress
+				net, addr = t.localAddr.net, t.localAddr.addr
 			}
-			conn2, err := t.dial(netw, addr)
+			conn2, err := t.dial(net, addr)
 			if err != nil {
 				log.Errorf("%v: could not dial: %v", t.Name, err)
 				return
@@ -249,4 +366,25 @@ func (t *Tunnel) waitFor(f func()) {
 	t.wg.Add(1)
 	defer t.wg.Done()
 	f()
+}
+
+func parseAddr(addr string, allowShort bool) (*address, error) {
+	if _, err := strconv.Atoi(addr); err == nil {
+		// addr is a tcp port number
+		if !allowShort {
+			return nil, fmt.Errorf("bad remote forwarding specification")
+		}
+		return &address{"localhost:" + addr, "tcp"}, nil
+	} else if strings.Contains(addr, ":") {
+		// addr is a full tcp address
+		return &address{addr, "tcp"}, nil
+	}
+	// it's a unix socket address
+	return &address{addr, "unix"}, nil
+}
+
+func safeClose(c *ssh.Client) {
+	if c != nil {
+		c.Close()
+	}
 }
