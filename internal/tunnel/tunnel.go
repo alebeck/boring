@@ -278,11 +278,11 @@ func (t *Tunnel) handleForward() {
 			return
 		}
 		go t.waitFor(func() {
-			net, addr := t.remoteAddr.net, t.remoteAddr.addr
+			addr := t.remoteAddr
 			if t.Mode == Remote || t.Mode == RemoteSocks {
-				net, addr = t.localAddr.net, t.localAddr.addr
+				addr = t.localAddr
 			}
-			conn2, err := t.dial(net, addr)
+			conn2, err := t.dial(addr.net, addr.addr)
 			if err != nil {
 				log.Errorf("%v: could not dial: %v", t.Name, err)
 				return
