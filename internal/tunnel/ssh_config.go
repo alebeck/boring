@@ -1,31 +1,290 @@
 package tunnel
 
 import (
+	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/alebeck/boring/internal/agent"
+	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/paths"
 	"github.com/kevinburke/ssh_config"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
+)
+
+const (
+	systemConfigPath  = "/etc/ssh/ssh_config"
+	sshConnTimeout    = 10 * time.Second
+	maxJumpRecursions = 20
 )
 
 var (
-	userConfigPath   = paths.ReplaceTilde("~/.ssh/config")
-	systemConfigPath = "/etc/ssh/ssh_config"
-	algos            = []string{"Ciphers", "MACs", "HostKeyAlgorithms", "KexAlgorithms"}
+	userConfigPath = paths.ReplaceTilde("~/.ssh/config")
+	defaultKeys    = []string{"~/.ssh/id_rsa", "~/.ssh/id_ecdsa", "~/.ssh/id_ed25519"}
+	algos          = []string{"Ciphers", "MACs", "HostKeyAlgorithms", "KexAlgorithms"}
 )
 
-// sshConfig (and the following functions) are a thin wrapper around
-// excellent kevinburke/ssh_config, with the intend to make the
-// UserConfig (here sshConfig) object accessible. We need this so we
-// can reload the config at every tunnel opening, and not just once
-// at application start.
-type sshConfig struct {
-	userConfig   *ssh_config.Config
-	systemConfig *ssh_config.Config
+type jumpSpec struct {
+	host string
+	user string
+	port int
 }
 
-func makeSSHConfig() (*sshConfig, error) {
+type keyCheck int
+
+const (
+	// Reject unknown hosts by default, this corresponds to "yes" and "ask"
+	// options in ssh_config. Note that "ask" is treated the same as "yes",
+	// as boring is not meant to be interactive.
+	strict keyCheck = iota
+	// Accepts all hosts, this corresponds to "no" and "off" options
+	off
+	// TODO: support "accept-new" option?
+)
+
+type sshConfig struct {
+	user            string
+	hostName        string
+	port            int
+	keyCheck        keyCheck
+	identityFiles   []string
+	knownHostsFiles []string
+	ciphers         []string
+	macs            []string
+	hostKeyAlgos    []string
+	kexAlgos        []string
+	jumps           []*jumpSpec
+}
+
+// jump holds information needed to establish a single SSH jump
+type jump struct {
+	hostName string
+	port     int
+	*ssh.ClientConfig
+}
+
+// sshConfigSpec is a thin wrapper around kevinburke/ssh_config, with
+// the intent to make the UserConfig (here sshConfigSpec) object accessible.
+// We need this so we can reload the config at every tunnel opening, and not
+// just once at application start.
+type sshConfigSpec struct {
+	userConfigSpec   *ssh_config.Config
+	systemConfigSpec *ssh_config.Config
+}
+
+func parseProxyJump(s string) (*jumpSpec, error) {
+	// Format: [user@]host[:port]
+	// TODO: use regex?
+	var portInt int
+	var err error
+	host, port, _ := strings.Cut(s, ":")
+	if port != "" {
+		if portInt, err = strconv.Atoi(port); err != nil {
+			return nil, fmt.Errorf("could not parse port: %v", err)
+		}
+	}
+	user, host, fnd := strings.Cut(host, "@")
+	if !fnd {
+		user, host = host, user
+	}
+	return &jumpSpec{host: host, user: user, port: portInt}, nil
+}
+
+func parseSSHConfig(alias string) (*sshConfig, error) {
+	d, err := makeSSHConfigDesc()
+	if err != nil {
+		return nil, err
+	}
+
+	c := &sshConfig{}
+
+	c.identityFiles = d.GetAll(alias, "IdentityFile")
+
+	// Known hosts
+	hosts := d.GetAll(alias, "GlobalKnownHostsFile")
+	hosts = append(hosts, d.GetAll(alias, "UserKnownHostsFile")...)
+	for _, h := range hosts {
+		c.knownHostsFiles = append(c.knownHostsFiles, strings.Split(h, " ")...)
+	}
+
+	s := d.Get(alias, "StrictHostKeyChecking")
+	if s == "no" || s == "off" {
+		c.keyCheck = off
+	} else if s == "accept-new" {
+		log.Warningf(
+			"StrictHostKeyChecking 'accept-new' not supported, using 'yes'")
+	} else if s != "yes" && s != "ask" {
+		return nil, fmt.Errorf(
+			"unsupported StrictHostKeyChecking option '%v'", s)
+	}
+
+	c.ciphers = split(d.Get(alias, "Ciphers"))
+	c.macs = split(d.Get(alias, "MACs"))
+	c.hostKeyAlgos = split(d.Get(alias, "HostKeyAlgorithms"))
+	c.kexAlgos = split(d.Get(alias, "KexAlgorithms"))
+
+	c.user = d.Get(alias, "User")
+	c.port, _ = strconv.Atoi(d.Get(alias, "Port"))
+	c.hostName = d.Get(alias, "HostName")
+
+	// Jump hosts
+	if pj := d.Get(alias, "ProxyJump"); pj != "" {
+		for _, j := range split(pj) {
+			jump, err := parseProxyJump(j)
+			if err != nil {
+				return nil, fmt.Errorf("could not parse jump host: %v", err)
+			}
+			c.jumps = append(c.jumps, jump)
+		}
+	}
+
+	return c, nil
+}
+
+// toJumps creates an ordered series of jumps from an sshConfig
+func (sc *sshConfig) toJumps() ([]jump, error) {
+	return sc.toJumpsImpl(false, 0)
+}
+
+func (sc *sshConfig) toJumpsImpl(ignoreIntermediate bool, depth int) ([]jump, error) {
+	if depth > maxJumpRecursions {
+		return nil, fmt.Errorf("maximum jump recursions exceeded")
+	}
+
+	if err := sc.validate(); err != nil {
+		return nil, err
+	}
+
+	if ignoreIntermediate {
+		sc.jumps = nil
+	}
+
+	var s []jump
+
+	for i, j := range sc.jumps {
+		jc, err := parseSSHConfig(j.host)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse SSH config for %v: %v", j.host, err)
+		}
+
+		// Replace jump user & port if provided
+		if j.user != "" {
+			jc.user = j.user
+		}
+		if j.port != 0 {
+			jc.port = j.port
+		}
+
+		// Recursively connect to first jump host, ignore jumps for subsequent connections;
+		// this corresponds to ssh(1) behavior
+		js, err := jc.toJumpsImpl(i != 0, depth+1)
+		if err != nil {
+			return nil, err
+		}
+		s = append(s, js...)
+	}
+
+	var signers []ssh.Signer
+	addKeyFiles := func(files []string) {
+		for _, f := range files {
+			s, err := loadKey(f)
+			if err != nil {
+				log.Warningf("key file %v could not be added: %v", f, err)
+				continue
+			}
+			signers = append(signers, *s)
+		}
+	}
+
+	addKeyFiles(sc.identityFiles)
+
+	if len(signers) == 0 {
+		log.Warningf("No key files specified, trying default ones")
+		addKeyFiles(defaultKeys)
+
+		// Also add potential keys exposed by ssh-agent
+		agentSigners, err := agent.GetSigners()
+		if err != nil {
+			log.Warningf("Unable to get keys from ssh-agent: %v", err)
+		}
+		signers = append(signers, agentSigners...)
+		log.Debugf("Added %d signers from ssh-agent", len(agentSigners))
+
+		if len(signers) == 0 {
+			return nil, fmt.Errorf("no key files found.")
+		}
+	}
+	log.Debugf("Trying %d key file(s)", len(signers))
+
+	var keyCallback ssh.HostKeyCallback
+	if sc.keyCheck == strict {
+		var hosts []string
+		for _, k := range sc.knownHostsFiles {
+			k = paths.ReplaceTilde(k)
+			if _, err := os.Stat(k); err == nil {
+				hosts = append(hosts, k)
+			}
+		}
+		var err error
+		if keyCallback, err = knownhosts.New(hosts...); err != nil {
+			return nil, fmt.Errorf("knownhosts: %v", err)
+		}
+	} else if sc.keyCheck == off {
+		keyCallback = ssh.InsecureIgnoreHostKey()
+	}
+
+	clientConf := &ssh.ClientConfig{
+		Config: ssh.Config{
+			Ciphers:      sc.ciphers,
+			KeyExchanges: sc.kexAlgos,
+			MACs:         sc.macs,
+		},
+		User:              sc.user,
+		Auth:              []ssh.AuthMethod{ssh.PublicKeys(signers...)},
+		HostKeyAlgorithms: sc.hostKeyAlgos,
+		HostKeyCallback:   keyCallback,
+		Timeout:           sshConnTimeout,
+	}
+
+	new := jump{hostName: sc.hostName, port: sc.port, ClientConfig: clientConf}
+	s = append(s, new)
+
+	return s, nil
+}
+
+func (sc *sshConfig) validate() error {
+	if sc.hostName == "" {
+		return fmt.Errorf("no host specified.")
+	}
+	if sc.user == "" {
+		return fmt.Errorf("no user specified.")
+	}
+	if sc.port == 0 {
+		return fmt.Errorf("no port specified.")
+	}
+	return nil
+}
+
+func loadKey(path string) (*ssh.Signer, error) {
+	if path == "" {
+		return nil, fmt.Errorf("no key specified")
+	}
+	key, err := os.ReadFile(paths.ReplaceTilde(path))
+	if err != nil {
+		return nil, fmt.Errorf("could not read key: %v", err)
+	}
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse key: %v", err)
+	}
+	return &signer, nil
+}
+
+func makeSSHConfigDesc() (*sshConfigSpec, error) {
 	uc, err := parse(userConfigPath)
 	if err != nil {
 		return nil, err
@@ -34,17 +293,17 @@ func makeSSHConfig() (*sshConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &sshConfig{userConfig: uc, systemConfig: sc}
+	c := &sshConfigSpec{userConfigSpec: uc, systemConfigSpec: sc}
 	return c, nil
 }
 
 // (c) kevinburke/ssh_config
-func (c *sshConfig) Get(alias, key string) string {
-	val, err := findVal(c.userConfig, alias, key)
+func (c *sshConfigSpec) Get(alias, key string) string {
+	val, err := findVal(c.userConfigSpec, alias, key)
 	if err != nil || val != "" {
 		return val
 	}
-	val2, err2 := findVal(c.systemConfig, alias, key)
+	val2, err2 := findVal(c.systemConfigSpec, alias, key)
 	if err2 != nil || val2 != "" {
 		return val2
 	}
@@ -52,12 +311,12 @@ func (c *sshConfig) Get(alias, key string) string {
 }
 
 // (c) kevinburke/ssh_config
-func (c *sshConfig) GetAll(alias, key string) []string {
-	val, err := findAll(c.userConfig, alias, key)
+func (c *sshConfigSpec) GetAll(alias, key string) []string {
+	val, err := findAll(c.userConfigSpec, alias, key)
 	if err != nil || val != nil {
 		return val
 	}
-	val2, err2 := findAll(c.systemConfig, alias, key)
+	val2, err2 := findAll(c.systemConfigSpec, alias, key)
 	if err2 != nil || val2 != nil {
 		return val2
 	}
@@ -151,4 +410,8 @@ func processAlgos(v, key string) string {
 	}
 
 	return strings.Join(out, ",")
+}
+
+func split(s string) []string {
+	return strings.Split(s, ",")
 }

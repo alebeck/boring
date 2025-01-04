@@ -21,8 +21,8 @@ var Path string
 
 // Config represents the application configuration as parsed from ./boring.toml
 type Config struct {
-	Tunnels    []tunnel.Tunnel           `toml:"tunnels"`
-	TunnelsMap map[string]*tunnel.Tunnel `toml:"-"`
+	Tunnels    []tunnel.TunnelDesc           `toml:"tunnels"`
+	TunnelsMap map[string]*tunnel.TunnelDesc `toml:"-"`
 }
 
 func init() {
@@ -53,7 +53,7 @@ func Load() (*Config, error) {
 	}
 
 	// Create a map of tunnel names to tunnel pointers for easy lookup
-	m := make(map[string]*tunnel.Tunnel)
+	m := make(map[string]*tunnel.TunnelDesc)
 	for i := range config.Tunnels {
 		t := &config.Tunnels[i]
 		if _, exists := m[t.Name]; exists {

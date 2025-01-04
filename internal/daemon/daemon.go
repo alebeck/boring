@@ -123,9 +123,9 @@ func handleConnection(s *state, conn net.Conn) {
 	// Execute command
 	switch cmd.Kind {
 	case Open:
-		openTunnel(s, conn, cmd.Tunnel)
+		openTunnel(s, conn, &cmd.Tunnel)
 	case Close:
-		closeTunnel(s, conn, cmd.Tunnel)
+		closeTunnel(s, conn, &cmd.Tunnel)
 	case List:
 		listTunnels(s, conn)
 	default:
@@ -143,26 +143,27 @@ func respond(conn net.Conn, err *error) {
 	}
 }
 
-func openTunnel(s *state, conn net.Conn, t tunnel.Tunnel) {
+func openTunnel(s *state, conn net.Conn, d *tunnel.TunnelDesc) {
 	var err error
 	defer respond(conn, &err)
 
 	s.mutex.RLock()
-	_, exists := s.tunnels[t.Name]
+	_, exists := s.tunnels[d.Name]
 	s.mutex.RUnlock()
 	if exists {
 		err = AlreadyRunning
-		log.Errorf("%v: could not open: %v", t.Name, err)
+		log.Errorf("%v: could not open: %v", d.Name, err)
 		return
 	}
 
+	t := tunnel.FromDesc(d)
 	if err = t.Open(); err != nil {
 		log.Errorf("%v: could not open: %v", t.Name, err)
 		return
 	}
 
 	s.mutex.Lock()
-	s.tunnels[t.Name] = &t
+	s.tunnels[t.Name] = t
 	s.mutex.Unlock()
 
 	// Register closing logic
@@ -175,7 +176,7 @@ func openTunnel(s *state, conn net.Conn, t tunnel.Tunnel) {
 	}()
 }
 
-func closeTunnel(s *state, conn net.Conn, q tunnel.Tunnel) {
+func closeTunnel(s *state, conn net.Conn, q *tunnel.TunnelDesc) {
 	var err error
 	defer respond(conn, &err)
 
@@ -196,10 +197,10 @@ func closeTunnel(s *state, conn net.Conn, q tunnel.Tunnel) {
 }
 
 func listTunnels(s *state, conn net.Conn) {
-	m := make(map[string]tunnel.Tunnel)
+	m := make(map[string]tunnel.TunnelDesc)
 	s.mutex.RLock()
 	for n, t := range s.tunnels {
-		m[n] = *t
+		m[n] = *t.TunnelDesc
 	}
 	s.mutex.RUnlock()
 

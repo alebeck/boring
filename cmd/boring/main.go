@@ -48,11 +48,11 @@ func main() {
 	case "list", "l":
 		listTunnels()
 	case "edit", "e":
-		openConfig()
+		editConfig()
 	case "version", "v":
 		printVersion()
 	default:
-		log.Printf("Unknown command: %v\n", os.Args[1])
+		log.Printf("Unknown command: %v\n\n", os.Args[1])
 		printUsage()
 		os.Exit(1)
 	}
@@ -93,7 +93,7 @@ func printVersion() {
 }
 
 func printUsage() {
-	log.Printf("The `boring` SSH tunnel manager.\n\n")
+	log.Printf("The `boring` SSH tunnel manager\n\n")
 	log.Printf("Usage:\n")
 	log.Printf("  boring list, l                List all tunnels\n")
 	log.Printf(`  boring open, o (-a | <patterns>...)

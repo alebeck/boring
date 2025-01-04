@@ -25,7 +25,7 @@ const defaultConfig = `# An example tunnel is defined below.
 
 `
 
-func openConfig() {
+func editConfig() {
 	if err := ensureConfig(); err != nil {
 		log.Fatalf("could not create config file: %v", err)
 	}
