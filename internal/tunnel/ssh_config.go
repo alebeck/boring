@@ -225,9 +225,11 @@ func (sc *sshConfig) toJumpsImpl(ignoreIntermediate bool, depth int) ([]jump, er
 		var hosts []string
 		for _, k := range sc.knownHostsFiles {
 			k = paths.ReplaceTilde(k)
-			if _, err := os.Stat(k); err == nil {
-				hosts = append(hosts, k)
+			if _, err := os.Stat(k); err != nil {
+				log.Debugf("could not open known hosts file %v: %v", k, err)
+				continue
 			}
+			hosts = append(hosts, k)
 		}
 		var err error
 		if keyCallback, err = knownhosts.New(hosts...); err != nil {
