@@ -2,18 +2,17 @@ package tunnel
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/alebeck/boring/internal/agent"
 	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/paths"
 	"github.com/kevinburke/ssh_config"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
@@ -208,11 +207,12 @@ func (sc *sshConfig) toJumpsImpl(ignoreIntermediate bool, depth int) ([]jump, er
 		addKeyFiles(defaultKeys)
 
 		// Also add potential keys exposed by ssh-agent
-		agentSigners, err := getAgentSigners()
+		agentSigners, err := agent.GetSigners()
 		if err != nil {
 			log.Warningf("Unable to get keys from ssh-agent: %v", err)
 		}
 		signers = append(signers, agentSigners...)
+		log.Debugf("Added %d signers from ssh-agent", len(agentSigners))
 
 		if len(signers) == 0 {
 			return nil, fmt.Errorf("no key files found.")
@@ -282,15 +282,6 @@ func loadKey(path string) (*ssh.Signer, error) {
 		return nil, fmt.Errorf("could not parse key: %v", err)
 	}
 	return &signer, nil
-}
-
-func getAgentSigners() ([]ssh.Signer, error) {
-	sock, err := net.Dial("unix", os.Getenv("SSH_AUTH_SOCK"))
-	if err != nil {
-		return nil, fmt.Errorf("could not dial agent: %v", err)
-	}
-	c := agent.NewClient(sock)
-	return c.Signers()
 }
 
 func makeSSHConfigDesc() (*sshConfigSpec, error) {
