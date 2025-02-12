@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	reconnectWait     = 2 * time.Millisecond
-	reconnectTimeout  = 10 * time.Minute
+	initReconnectWait = 500 * time.Millisecond
+	maxReconnectWait  = 1 * time.Minute
+	reconnectTimeout  = 15 * time.Minute
 	keepAliveInterval = 2 * time.Minute
 )
 
@@ -329,8 +330,8 @@ func (t *Tunnel) handleSocks() {
 func (t *Tunnel) reconnectLoop() error {
 	t.Status = Reconn
 	timeout := time.After(reconnectTimeout)
-	wait := time.NewTimer(0.) // First time try immediately
-	waitTime := reconnectWait
+	wait := time.NewTimer(2 * time.Millisecond) // First time try (essent.) immediately
+	waitTime := initReconnectWait
 
 	for {
 		select {
@@ -348,6 +349,9 @@ func (t *Tunnel) reconnectLoop() error {
 				t.Name, err, waitTime)
 			wait.Reset(waitTime)
 			waitTime *= 2
+			if waitTime > maxReconnectWait {
+				waitTime = maxReconnectWait
+			}
 		}
 	}
 }
