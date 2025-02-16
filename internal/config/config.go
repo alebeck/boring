@@ -42,6 +42,13 @@ func getConfigHome() string {
 		}
 		return filepath.Join(h, "boring")
 	}
+	if runtime.GOOS == "darwin" {
+		h, err := os.UserConfigDir()
+		if err != nil {
+			h = "~/Library/Application Support"
+		}
+		return filepath.Join(h, "boring")
+	}
 	return "~"
 }
 
