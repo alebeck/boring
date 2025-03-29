@@ -3,6 +3,7 @@ package tunnel
 import (
 	"fmt"
 	"os"
+	"os/user"
 	"slices"
 	"strconv"
 	"strings"
@@ -67,6 +68,15 @@ type jump struct {
 	*ssh.ClientConfig
 }
 
+type subst map[string]string
+
+var (
+	hostnameTokens  = []string{"%%", "%h"}
+	proxyTokens     = []string{"%%", "h", "%n", "%p", "%r"}
+	identFileTokens = []string{"%%", "%d", "%h", "%i", "%j", "%k",
+		"%L", "%l", "%n", "%p", "%r", "%u"}
+)
+
 // sshConfigSpec is a thin wrapper around kevinburke/ssh_config, with
 // the intent to make the UserConfig (here sshConfigSpec) object accessible.
 // We need this so we can reload the config at every tunnel opening, and not
@@ -74,6 +84,45 @@ type jump struct {
 type sshConfigSpec struct {
 	userConfigSpec   *ssh_config.Config
 	systemConfigSpec *ssh_config.Config
+}
+
+func makeSubst(alias string) subst {
+	s := map[string]string{
+		"%%": "%",
+		"%p": "22",
+		"%h": alias,
+		"%n": alias,
+	}
+	if u, err := user.Current(); err == nil {
+		s["%u"] = u.Username
+		s["%d"] = u.HomeDir
+		s["%i"] = u.Uid
+	}
+	if h, err := os.Hostname(); err == nil {
+		s["%L"] = h
+		// TODO: %l (FQDN)
+	}
+	return s
+}
+
+func (s subst) apply(str string, keys []string) string {
+	if !strings.Contains(str, "%") {
+		return str
+	}
+	for _, k := range keys {
+		if r, ok := s[k]; ok {
+			str = strings.ReplaceAll(str, k, r)
+		}
+	}
+	return str
+}
+
+func (s subst) applyAll(strs []string, keys []string) []string {
+	var out []string
+	for _, str := range strs {
+		out = append(out, s.apply(str, keys))
+	}
+	return out
 }
 
 func parseProxyJump(s string) (*jumpSpec, error) {
@@ -95,21 +144,21 @@ func parseProxyJump(s string) (*jumpSpec, error) {
 }
 
 func parseSSHConfig(alias string) (*sshConfig, error) {
-	d, err := makeSSHConfigDesc()
+	d, err := makeSSHConfigSpec()
 	if err != nil {
 		return nil, err
 	}
 
 	c := &sshConfig{}
+	sub := makeSubst(alias)
 
-	c.identityFiles = d.GetAll(alias, "IdentityFile")
+	c.hostName = sub.apply(d.Get(alias, "HostName"), hostnameTokens)
+	sub["%h"] = c.hostName
 
-	// Known hosts
-	hosts := d.GetAll(alias, "GlobalKnownHostsFile")
-	hosts = append(hosts, d.GetAll(alias, "UserKnownHostsFile")...)
-	for _, h := range hosts {
-		c.knownHostsFiles = append(c.knownHostsFiles, strings.Split(h, " ")...)
-	}
+	c.user = d.Get(alias, "User")
+	sub["%r"] = c.user
+	c.port, _ = strconv.Atoi(d.Get(alias, "Port"))
+	sub["%p"] = fmt.Sprintf("%d", c.port)
 
 	s := d.Get(alias, "StrictHostKeyChecking")
 	if s == "no" || s == "off" {
@@ -127,12 +176,10 @@ func parseSSHConfig(alias string) (*sshConfig, error) {
 	c.hostKeyAlgos = split(d.Get(alias, "HostKeyAlgorithms"))
 	c.kexAlgos = split(d.Get(alias, "KexAlgorithms"))
 
-	c.user = d.Get(alias, "User")
-	c.port, _ = strconv.Atoi(d.Get(alias, "Port"))
-	c.hostName = d.Get(alias, "HostName")
-
 	// Jump hosts
-	if pj := d.Get(alias, "ProxyJump"); pj != "" {
+	pj := sub.apply(d.Get(alias, "ProxyJump"), proxyTokens)
+	sub["%j"] = pj
+	if pj != "" {
 		for _, j := range split(pj) {
 			jump, err := parseProxyJump(j)
 			if err != nil {
@@ -140,6 +187,15 @@ func parseSSHConfig(alias string) (*sshConfig, error) {
 			}
 			c.jumps = append(c.jumps, jump)
 		}
+	}
+
+	c.identityFiles = sub.applyAll(d.GetAll(alias, "IdentityFile"), identFileTokens)
+
+	// Known hosts
+	hosts := d.GetAll(alias, "GlobalKnownHostsFile")
+	hosts = append(hosts, sub.applyAll(d.GetAll(alias, "UserKnownHostsFile"), identFileTokens)...)
+	for _, h := range hosts {
+		c.knownHostsFiles = append(c.knownHostsFiles, strings.Split(h, " ")...)
 	}
 
 	return c, nil
@@ -286,7 +342,7 @@ func loadKey(path string) (*ssh.Signer, error) {
 	return &signer, nil
 }
 
-func makeSSHConfigDesc() (*sshConfigSpec, error) {
+func makeSSHConfigSpec() (*sshConfigSpec, error) {
 	uc, err := parse(userConfigPath)
 	if err != nil {
 		return nil, err
