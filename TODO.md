@@ -7,3 +7,4 @@
 * Logo
 * Somehow monitor network config changes
 * %h, %p, %n etc. substitutions in ssh config
+* configurable timeouts/intervals
