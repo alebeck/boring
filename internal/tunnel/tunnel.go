@@ -20,9 +20,10 @@ const (
 	initReconnectWait = 500 * time.Millisecond
 	maxReconnectWait  = 1 * time.Minute
 	reconnectTimeout  = 15 * time.Minute
-	keepAliveInterval = 2 * time.Minute
 )
 
+// TunnelDesc describes a tunnel for user-facing purposes, e.g.,
+// in the config file and in the TUI.
 type TunnelDesc struct {
 	Name          string      `toml:"name" json:"name"`
 	LocalAddress  StringOrInt `toml:"local" json:"local"`
@@ -31,11 +32,14 @@ type TunnelDesc struct {
 	User          string      `toml:"user" json:"user"`
 	IdentityFile  string      `toml:"identity" json:"identity"`
 	Port          int         `toml:"port" json:"port"`
+	KeepAlive     *int        `toml:"keep_alive" json:"keep_alive"`
 	Mode          Mode        `toml:"mode" json:"mode"`
 	Status        Status      `toml:"-" json:"status"`
 	LastConn      time.Time   `toml:"-" json:"last_conn"`
 }
 
+// Tunnel is a representation internal to the tunnel and daemon packages,
+// describing a tunnel that is running or about to run.
 type Tunnel struct {
 	prepared   bool
 	jumps      []jump
@@ -244,11 +248,19 @@ func (t *Tunnel) run() {
 }
 
 func (t *Tunnel) keepAlive(cancel chan struct{}) {
+	// panics if nil, this should never happen
+	interv := *t.KeepAlive
+
+	if interv == 0 {
+		log.Infof("%v: disabling keep-alives since set to 0", t.Name)
+		return
+	}
+
 	for {
 		select {
 		case <-cancel:
 			return
-		case <-time.After(keepAliveInterval):
+		case <-time.After(time.Duration(interv) * time.Second):
 			_, _, err := t.client.SendRequest("keepalive@golang.org", true, nil)
 			if err != nil {
 				log.Errorf("%v: error sending keepalive: %v", t.Name, err)

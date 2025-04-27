@@ -17,11 +17,18 @@ const (
 	socksLabel = "[SOCKS]"
 )
 
+var defaultKeepAliveInterval = 2 * 60 // seconds
+
 var Path string
 
 // Config represents the application configuration as parsed from ./boring.toml
 type Config struct {
-	Tunnels    []tunnel.TunnelDesc           `toml:"tunnels"`
+	// Tunnels is a list of tunnel descriptions
+	Tunnels []tunnel.TunnelDesc `toml:"tunnels"`
+	// KeepAlive allows to specify a global keep alive interval,
+	// (in seconds) overriding the default one. `0` indicates
+	// no keep alive.
+	KeepAlive  *int                          `toml:"keep_alive"`
 	TunnelsMap map[string]*tunnel.TunnelDesc `toml:"-"`
 }
 
@@ -47,15 +54,25 @@ func getConfigHome() string {
 
 // Load parses the boring configuration file
 func Load() (*Config, error) {
-	var config Config
-	if _, err := toml.DecodeFile(Path, &config); err != nil {
+	cfg := Config{KeepAlive: &defaultKeepAliveInterval}
+
+	if _, err := toml.DecodeFile(Path, &cfg); err != nil {
 		return nil, fmt.Errorf("could not decode config file: %w", err)
 	}
 
-	// Create a map of tunnel names to tunnel pointers for easy lookup
+	// Set global keep alive interval for all tunnels
+	// that don't specify one on their own.
+	for i := range cfg.Tunnels {
+		t := &cfg.Tunnels[i]
+		if t.KeepAlive == nil {
+			t.KeepAlive = cfg.KeepAlive
+		}
+	}
+
+	// Create a map of tunnel names to tunnel pointers for easy lookup later
 	m := make(map[string]*tunnel.TunnelDesc)
-	for i := range config.Tunnels {
-		t := &config.Tunnels[i]
+	for i := range cfg.Tunnels {
+		t := &cfg.Tunnels[i]
 		if _, exists := m[t.Name]; exists {
 			return nil, fmt.Errorf("found duplicated tunnel name '%v'", t.Name)
 		}
@@ -78,8 +95,8 @@ func Load() (*Config, error) {
 		}
 	}
 
-	config.TunnelsMap = m
-	return &config, nil
+	cfg.TunnelsMap = m
+	return &cfg, nil
 }
 
 func specialPrefix(s string) bool {
