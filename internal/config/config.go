@@ -88,9 +88,10 @@ func Load() (*Config, error) {
 	// Replace the remote address of Socks tunnels and local address of reverse
 	// socks tunnels by a fixed indicator, it is not used for anything anyway
 	for _, t := range m {
-		if t.Mode == tunnel.Socks {
+		switch t.Mode {
+		case tunnel.Socks:
 			t.RemoteAddress = socksLabel
-		} else if t.Mode == tunnel.RemoteSocks {
+		case tunnel.RemoteSocks:
 			t.LocalAddress = socksLabel
 		}
 	}

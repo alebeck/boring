@@ -73,8 +73,10 @@ type subst map[string]string
 var (
 	hostnameTokens  = []string{"%%", "%h"}
 	proxyTokens     = []string{"%%", "h", "%n", "%p", "%r"}
-	identFileTokens = []string{"%%", "%d", "%h", "%i", "%j", "%k",
-		"%L", "%l", "%n", "%p", "%r", "%u"}
+	identFileTokens = []string{
+		"%%", "%d", "%h", "%i", "%j", "%k",
+		"%L", "%l", "%n", "%p", "%r", "%u",
+	}
 )
 
 // sshConfigSpec is a thin wrapper around kevinburke/ssh_config, with
@@ -271,7 +273,7 @@ func (sc *sshConfig) toJumpsImpl(ignoreIntermediate bool, depth int) ([]jump, er
 		log.Debugf("Added %d signers from ssh-agent", len(agentSigners))
 
 		if len(signers) == 0 {
-			return nil, fmt.Errorf("no key files found.")
+			return nil, fmt.Errorf("no key files found")
 		}
 	}
 	log.Debugf("Trying %d key file(s)", len(signers))

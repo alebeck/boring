@@ -14,7 +14,7 @@ const (
 	RemoteSocks
 )
 
-func (m *Mode) UnmarshalTOML(data interface{}) error {
+func (m *Mode) UnmarshalTOML(data any) error {
 	s, ok := data.(string)
 	if !ok {
 		return errors.New("invalid mode type")
