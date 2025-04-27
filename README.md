@@ -8,6 +8,7 @@ A simple command line SSH tunnel manager that just works.
 ![Screenshot](./assets/dark.gif)
 
 ## Features
+
 * Ultra lightweight and fast
 * Local, remote and dynamic (SOCKS5) port forwarding
 * Compatible with SSH config and `ssh-agent`
@@ -16,6 +17,7 @@ A simple command line SSH tunnel manager that just works.
 * Human-friendly configuration via TOML
 
 ## Usage
+
 ```
 Usage:
   boring list, l                List all tunnels
@@ -28,6 +30,7 @@ Usage:
 ```
 
 ## Configuration
+
 By default, `boring` reads its configuration from `~/.boring.toml` on macOS and Windows, and from `$XDG_CONFIG_HOME/boring/.boring.toml` on Linux. If `$XDG_CONFIG_HOME` is not set, it defaults to `~/.config`. The location of the config file can be overriden by setting `$BORING_CONFIG`. The config is a simple TOML file describing your tunnels:
 
 ```toml
@@ -50,7 +53,7 @@ identity = "~/.ssh/id_prod"  # will try default ones if not set
 # ... more tunnels
 ```
 
-Currently, supported options are:
+Currently, supported options at tunnel level are:
 
 | **Option**    | **Description**                                                                                                     |
 |---------------|---------------------------------------------------------------------------------------------------------------------|
@@ -63,18 +66,26 @@ Currently, supported options are:
 | `identity`    | SSH identity file. If not set, tries to read it from SSH config and `ssh-agent`, defaulting to standard identity files.     |
 | `port`        | SSH port. If not set, tries to read it from SSH config, defaulting to `22`.                                          |
 
+Options that can be provided at global and tunnel level (tunnel level takes precedence):
+
+| **Option**    | **Description**                                                                                                     |
+|---------------|---------------------------------------------------------------------------------------------------------------------|
+| `keep_alive`  | Keep-alive interval **in seconds**. Default: `120` (2 minutes).                                                                                 |
 
 ## Installation
 
 ### Homebrew
+
 ```sh
 brew install boring
 ```
 
 ### Pre-built
+
 Get one of the pre-built binaries from the [releases page](https://github.com/alebeck/boring/releases). Then move the binary to a location in your `$PATH`.
 
 ### Build yourself
+
 ```sh
 git clone https://github.com/alebeck/boring && cd boring
 ./build.sh
@@ -95,23 +106,27 @@ Then move the binary to a location in your `$PATH`.
 </details>
 
 ### Shell completion
-Shell completion scripts are available for `bash`, `zsh`, and `fish`. 
 
-If `boring` was installed via Homebrew, and you have Homebrew completions enabled, nothing needs to be done. 
+Shell completion scripts are available for `bash`, `zsh`, and `fish`.
+
+If `boring` was installed via Homebrew, and you have Homebrew completions enabled, nothing needs to be done.
 
 Otherwise, install completions by adding the following to your shell's config file:
 
 #### Bash
+
 ```sh
 eval "$(boring --shell bash)"
 ```
 
 #### Zsh
+
 ```sh
 source <(boring --shell zsh)
 ```
 
 #### Fish
+
 ```sh
 boring --shell fish | source
 ```
