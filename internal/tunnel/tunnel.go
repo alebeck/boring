@@ -122,7 +122,7 @@ func (t *Tunnel) prepare() error {
 
 	// Infer series of jumps from ssh config
 	if t.jumps, err = sc.toJumps(); err != nil {
-		return fmt.Errorf("could not specify connection to %v: %v", sc.hostName, err)
+		return fmt.Errorf("could not prepare connection to %v: %v", sc.hostName, err)
 	}
 
 	allowShort := t.Mode == Remote || t.Mode == RemoteSocks

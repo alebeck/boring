@@ -48,6 +48,7 @@ const (
 )
 
 type sshConfig struct {
+	alias           string
 	user            string
 	hostName        string
 	port            int
@@ -151,7 +152,7 @@ func parseSSHConfig(alias string) (*sshConfig, error) {
 		return nil, err
 	}
 
-	c := &sshConfig{}
+	c := &sshConfig{alias: alias}
 	sub := makeSubst(alias)
 
 	c.hostName = sub.apply(d.Get(alias, "HostName"), hostnameTokens)
@@ -214,7 +215,7 @@ func (sc *sshConfig) toJumpsImpl(ignoreIntermediate bool, depth int) ([]jump, er
 	}
 
 	if err := sc.validate(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%v: %v", sc.alias, err)
 	}
 
 	if ignoreIntermediate {
@@ -273,7 +274,7 @@ func (sc *sshConfig) toJumpsImpl(ignoreIntermediate bool, depth int) ([]jump, er
 		log.Debugf("Added %d signers from ssh-agent", len(agentSigners))
 
 		if len(signers) == 0 {
-			return nil, fmt.Errorf("no key files found")
+			return nil, fmt.Errorf("%v: no key files found", sc.alias)
 		}
 	}
 	log.Debugf("Trying %d key file(s)", len(signers))
