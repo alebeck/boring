@@ -223,20 +223,25 @@ func (sc *sshConfig) toJumpsImpl(ignoreIntermediate bool, depth int) ([]jump, er
 	}
 
 	var s []jump
-
 	for i, j := range sc.jumps {
 		jc, err := parseSSHConfig(j.host)
 		if err != nil {
 			return nil, fmt.Errorf("could not parse SSH config for %v: %v", j.host, err)
 		}
 
-		// Replace jump user & port if provided
+		// Replace jump user & port if provided inline
 		if j.user != "" {
 			jc.user = j.user
 		}
 		if j.port != 0 {
 			jc.port = j.port
 		}
+		// If hostname could not be resolved from ssh config, take it literally
+		if jc.hostName == "" {
+			jc.hostName = j.host
+		}
+
+		jc.ensureUser()
 
 		// Recursively connect to first jump host, ignore jumps for subsequent connections;
 		// this corresponds to ssh(1) behavior
@@ -328,6 +333,15 @@ func (sc *sshConfig) validate() error {
 		return fmt.Errorf("no port specified.")
 	}
 	return nil
+}
+
+func (sc *sshConfig) ensureUser() {
+	// Like ssh(1), use $USER if no user specified
+	if sc.user == "" {
+		if u, err := user.Current(); err == nil {
+			sc.user = u.Username
+		}
+	}
 }
 
 func loadKey(path string) (*ssh.Signer, error) {

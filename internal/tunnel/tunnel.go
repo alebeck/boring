@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os/user"
 	"strconv"
 	"strings"
 	"sync"
@@ -113,12 +112,7 @@ func (t *Tunnel) prepare() error {
 		sc.hostName = t.Host
 	}
 
-	// Use $USER if still no user specified
-	if sc.user == "" {
-		if u, err := user.Current(); err == nil {
-			sc.user = u.Username
-		}
-	}
+	sc.ensureUser()
 
 	// Infer series of jumps from ssh config
 	if t.jumps, err = sc.toJumps(); err != nil {
