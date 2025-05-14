@@ -1,10 +1,18 @@
-# The `boring` tunnel manager
+<div align="center">
 
-![Static Badge](https://img.shields.io/badge/build-passing-4CC525?) ![GitHub Release](https://img.shields.io/github/v/release/alebeck/boring?color=orange) [![Go Report Card](https://goreportcard.com/badge/github.com/alebeck/boring)](https://goreportcard.com/report/github.com/alebeck/boring)
- ![Static Badge](https://img.shields.io/badge/license-MIT-blue?)
+<h1>The <code>boring</code> Tunnel Manager</h1>
+
+<img src="assets/gopher.png" width="200">
 
 A simple command line SSH tunnel manager that just works.
 
+![Static Badge](https://img.shields.io/badge/build-passing-4CC525?) 
+![GitHub Release](https://img.shields.io/github/v/release/alebeck/boring?color=orange) [![Go Report Card](https://goreportcard.com/badge/github.com/alebeck/boring)](https://goreportcard.com/report/github.com/alebeck/boring)
+![Static Badge](https://img.shields.io/badge/license-MIT-blue?)
+
+</div>
+
+## Demo
 ![Screenshot](./assets/dark.gif)
 
 ## Features
@@ -130,3 +138,6 @@ source <(boring --shell zsh)
 ```sh
 boring --shell fish | source
 ```
+
+### Credits
+Go gopher logo by Renee French.
