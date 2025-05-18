@@ -17,15 +17,11 @@ import (
 )
 
 const (
-	systemConfigPath  = "/etc/ssh/ssh_config"
 	sshConnTimeout    = 10 * time.Second
 	maxJumpRecursions = 20
 )
 
-var (
-	userConfigPath = paths.ReplaceTilde("~/.ssh/config")
-	defaultKeys    = []string{"~/.ssh/id_rsa", "~/.ssh/id_ecdsa", "~/.ssh/id_ed25519"}
-)
+var defaultKeys = []string{"~/.ssh/id_rsa", "~/.ssh/id_ecdsa", "~/.ssh/id_ed25519"}
 
 type keyCheck int
 

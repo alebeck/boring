@@ -1,6 +1,7 @@
 package ssh_config
 
 import (
+	"github.com/alebeck/boring/internal/paths"
 	"os"
 	"slices"
 	"strings"
@@ -8,7 +9,12 @@ import (
 	ossh_config "github.com/kevinburke/ssh_config"
 )
 
-var algoSpecifiers = []string{"Ciphers", "MACs", "HostKeyAlgorithms", "KexAlgorithms"}
+const systemConfigPath = "/etc/ssh/ssh_config"
+
+var (
+	userConfigPath = paths.ReplaceTilde("~/.ssh/config")
+	algoSpecifiers = []string{"Ciphers", "MACs", "HostKeyAlgorithms", "KexAlgorithms"}
+)
 
 // sshConfigSpec is a thin wrapper around kevinburke/ssh_config, with
 // the intent to make the UserConfig (here sshConfigSpec) object accessible.
