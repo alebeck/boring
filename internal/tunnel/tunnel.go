@@ -12,6 +12,7 @@ import (
 
 	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/proxy"
+	"github.com/alebeck/boring/internal/ssh_config"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -41,7 +42,7 @@ type TunnelDesc struct {
 // describing a tunnel that is running or about to run.
 type Tunnel struct {
 	prepared   bool
-	jumps      []jump
+	jumps      []ssh_config.Jump
 	Closed     chan struct{}
 	stop       chan struct{}
 	listener   net.Listener
@@ -91,32 +92,32 @@ func (t *Tunnel) Open() (err error) {
 }
 
 func (t *Tunnel) prepare() error {
-	sc, err := parseSSHConfig(t.Host)
+	sc, err := ssh_config.ParseSSHConfig(t.Host)
 	if err != nil {
 		return fmt.Errorf("could not parse SSH config: %v", err)
 	}
 
 	// Override values manually set by user
 	if t.User != "" {
-		sc.user = t.User
+		sc.User = t.User
 	}
 	if t.Port != 0 {
-		sc.port = t.Port
+		sc.Port = t.Port
 	}
 	if t.IdentityFile != "" {
-		sc.identityFiles = []string{t.IdentityFile}
+		sc.IdentityFiles = []string{t.IdentityFile}
 	}
 
 	// If t.Host could not be resolved from ssh config, take it literally
-	if sc.hostName == "" {
-		sc.hostName = t.Host
+	if sc.HostName == "" {
+		sc.HostName = t.Host
 	}
 
-	sc.ensureUser()
+	sc.EnsureUser()
 
 	// Infer series of jumps from ssh config
-	if t.jumps, err = sc.toJumps(); err != nil {
-		return fmt.Errorf("could not prepare connection to %v: %v", sc.hostName, err)
+	if t.jumps, err = sc.ToJumps(); err != nil {
+		return fmt.Errorf("could not prepare connection to %v: %v", sc.HostName, err)
 	}
 
 	allowShort := t.Mode == Remote || t.Mode == RemoteSocks
@@ -145,7 +146,7 @@ func (t *Tunnel) makeClient() error {
 
 	// Connect through all jump hosts
 	for _, j := range t.jumps {
-		addr := fmt.Sprintf("%v:%v", j.hostName, j.port)
+		addr := fmt.Sprintf("%v:%v", j.HostName, j.Port)
 		n, err := wrapClient(c, addr, j.ClientConfig)
 		if err != nil {
 			safeClose(c)
@@ -153,7 +154,7 @@ func (t *Tunnel) makeClient() error {
 			wg.Wait()
 			return fmt.Errorf("could not connect to host %v: %v", addr, err)
 		}
-		log.Debugf("%v: connected to host %v (client %p)", t.Name, j.hostName, n)
+		log.Debugf("%v: connected to host %v (client %p)", t.Name, j.HostName, n)
 
 		// Add new client to wait group
 		wg.Add(1)
