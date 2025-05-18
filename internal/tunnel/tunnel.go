@@ -42,7 +42,7 @@ type TunnelDesc struct {
 // describing a tunnel that is running or about to run.
 type Tunnel struct {
 	prepared   bool
-	jumps      []ssh_config.Jump
+	hops       []ssh_config.Hop
 	Closed     chan struct{}
 	stop       chan struct{}
 	listener   net.Listener
@@ -115,8 +115,8 @@ func (t *Tunnel) prepare() error {
 
 	sc.EnsureUser()
 
-	// Infer series of jumps from ssh config
-	if t.jumps, err = sc.ToJumps(); err != nil {
+	// Infer series of hops from ssh config
+	if t.hops, err = sc.ToHops(); err != nil {
 		return fmt.Errorf("could not prepare connection to %v: %v", sc.HostName, err)
 	}
 
@@ -137,7 +137,7 @@ func (t *Tunnel) prepare() error {
 }
 
 func (t *Tunnel) makeClient() error {
-	if len(t.jumps) == 0 {
+	if len(t.hops) == 0 {
 		return fmt.Errorf("no connections specified")
 	}
 
@@ -145,7 +145,7 @@ func (t *Tunnel) makeClient() error {
 	var wg sync.WaitGroup
 
 	// Connect through all jump hosts
-	for _, j := range t.jumps {
+	for _, j := range t.hops {
 		addr := fmt.Sprintf("%v:%v", j.HostName, j.Port)
 		n, err := wrapClient(c, addr, j.ClientConfig)
 		if err != nil {

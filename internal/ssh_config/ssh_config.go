@@ -39,8 +39,8 @@ const (
 	// TODO: support "accept-new" option?
 )
 
-// Jump holds information needed to establish a single SSH jump
-type Jump struct {
+// Hop holds information needed to establish a single SSH hop
+type Hop struct {
 	HostName string
 	Port     int
 	*ssh.ClientConfig
@@ -62,8 +62,6 @@ type sshConfig struct {
 	Jumps           []*jumpSpec
 }
 
-type subst map[string]string
-
 var (
 	hostnameTokens  = []string{"%%", "%h"}
 	proxyTokens     = []string{"%%", "h", "%n", "%p", "%r"}
@@ -72,45 +70,6 @@ var (
 		"%L", "%l", "%n", "%p", "%r", "%u",
 	}
 )
-
-func makeSubst(alias string) subst {
-	s := map[string]string{
-		"%%": "%",
-		"%p": "22",
-		"%h": alias,
-		"%n": alias,
-	}
-	if u, err := user.Current(); err == nil {
-		s["%u"] = u.Username
-		s["%d"] = u.HomeDir
-		s["%i"] = u.Uid
-	}
-	if h, err := os.Hostname(); err == nil {
-		s["%L"] = h
-		// TODO: %l (FQDN)
-	}
-	return s
-}
-
-func (s subst) apply(str string, keys []string) string {
-	if !strings.Contains(str, "%") {
-		return str
-	}
-	for _, k := range keys {
-		if r, ok := s[k]; ok {
-			str = strings.ReplaceAll(str, k, r)
-		}
-	}
-	return str
-}
-
-func (s subst) applyAll(strs []string, keys []string) []string {
-	var out []string
-	for _, str := range strs {
-		out = append(out, s.apply(str, keys))
-	}
-	return out
-}
 
 func ParseSSHConfig(alias string) (*sshConfig, error) {
 	d, err := makeSSHConfigSpec()
@@ -170,12 +129,12 @@ func ParseSSHConfig(alias string) (*sshConfig, error) {
 	return c, nil
 }
 
-// toJumps creates an ordered series of jumps from an sshConfig
-func (sc *sshConfig) ToJumps() ([]Jump, error) {
-	return sc.toJumpsImpl(false, 0)
+// toHops creates an ordered series of chops from an sshConfig
+func (sc *sshConfig) ToHops() ([]Hop, error) {
+	return sc.toHopsImpl(false, 0)
 }
 
-func (sc *sshConfig) toJumpsImpl(ignoreIntermediate bool, depth int) ([]Jump, error) {
+func (sc *sshConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, error) {
 	if depth > maxJumpRecursions {
 		return nil, fmt.Errorf("maximum jump recursions exceeded")
 	}
@@ -188,7 +147,7 @@ func (sc *sshConfig) toJumpsImpl(ignoreIntermediate bool, depth int) ([]Jump, er
 		sc.Jumps = nil
 	}
 
-	var s []Jump
+	var hops []Hop
 	for i, j := range sc.Jumps {
 		jc, err := ParseSSHConfig(j.host)
 		if err != nil {
@@ -211,44 +170,18 @@ func (sc *sshConfig) toJumpsImpl(ignoreIntermediate bool, depth int) ([]Jump, er
 
 		// Recursively connect to first jump host, ignore jumps for subsequent connections;
 		// this corresponds to ssh(1) behavior
-		js, err := jc.toJumpsImpl(i != 0, depth+1)
+		hs, err := jc.toHopsImpl(i != 0, depth+1)
 		if err != nil {
 			return nil, err
 		}
-		s = append(s, js...)
+		hops = append(hops, hs...)
 	}
 
-	var signers []ssh.Signer
-	addKeyFiles := func(files []string) {
-		for _, f := range files {
-			s, err := loadKey(f)
-			if err != nil {
-				log.Warningf("key file %v could not be added: %v", f, err)
-				continue
-			}
-			signers = append(signers, *s)
-		}
+	sigs, err := sc.makeSigners()
+	if err != nil {
+		return nil, err
 	}
-
-	addKeyFiles(sc.IdentityFiles)
-
-	if len(signers) == 0 {
-		log.Warningf("No key files specified, trying default ones")
-		addKeyFiles(defaultKeys)
-
-		// Also add potential keys exposed by ssh-agent
-		agentSigners, err := agent.GetSigners()
-		if err != nil {
-			log.Warningf("Unable to get keys from ssh-agent: %v", err)
-		}
-		signers = append(signers, agentSigners...)
-		log.Debugf("Added %d signers from ssh-agent", len(agentSigners))
-
-		if len(signers) == 0 {
-			return nil, fmt.Errorf("%v: no key files found", sc.Alias)
-		}
-	}
-	log.Debugf("Trying %d key file(s)", len(signers))
+	log.Debugf("Trying %d key file(s)", len(sigs))
 
 	keyCallback, keyAlgos, err := sc.makeCallbackAndAlgos()
 	if err != nil {
@@ -262,16 +195,55 @@ func (sc *sshConfig) toJumpsImpl(ignoreIntermediate bool, depth int) ([]Jump, er
 			MACs:         sc.Macs,
 		},
 		User:              sc.User,
-		Auth:              []ssh.AuthMethod{ssh.PublicKeys(signers...)},
+		Auth:              []ssh.AuthMethod{ssh.PublicKeys(sigs...)},
 		HostKeyAlgorithms: keyAlgos,
 		HostKeyCallback:   keyCallback,
 		Timeout:           sshConnTimeout,
 	}
 
-	newJump := Jump{HostName: sc.HostName, Port: sc.Port, ClientConfig: clientConf}
-	s = append(s, newJump)
+	hop := Hop{HostName: sc.HostName, Port: sc.Port, ClientConfig: clientConf}
+	hops = append(hops, hop)
 
-	return s, nil
+	return hops, nil
+}
+
+func (sc *sshConfig) makeSigners() ([]ssh.Signer, error) {
+	var sigs []ssh.Signer
+
+	addKeyFiles := func(files []string) {
+		for _, f := range files {
+			s, err := loadKey(f)
+			if err != nil {
+				log.Warningf("key file %q could not be added: %v", f, err)
+				continue
+			}
+			sigs = append(sigs, *s)
+		}
+	}
+
+	addKeyFiles(sc.IdentityFiles)
+
+	if len(sigs) > 0 {
+		return sigs, nil
+	}
+
+	log.Warningf("No key files specified, trying default ones")
+	addKeyFiles(defaultKeys)
+
+	// Also add potential keys exposed by ssh-agent
+	agentSigs, err := agent.GetSigners()
+	if err != nil {
+		log.Warningf("Unable to get keys from ssh-agent: %v", err)
+	} else {
+		sigs = append(sigs, agentSigs...)
+		log.Debugf("Added %d signers from ssh-agent", len(agentSigs))
+	}
+
+	if len(sigs) == 0 {
+		return nil, fmt.Errorf("%s: no key files found", sc.Alias)
+	}
+
+	return sigs, nil
 }
 
 func (sc *sshConfig) makeCallbackAndAlgos() (cb ssh.HostKeyCallback, algs []string, err error) {
