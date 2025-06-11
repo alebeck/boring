@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>The <code>boring</code> Tunnel Manager</h1>
+<h1>The <code>boring</code> tunnel manager</h1>
 
 <img src="assets/gopher.png" width="200">
 
