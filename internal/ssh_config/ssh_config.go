@@ -41,8 +41,8 @@ type Hop struct {
 	*ssh.ClientConfig
 }
 
-// sshConfig represents an SSH config read from, e.g., ~/.ssh/config
-type sshConfig struct {
+// SSHConfig represents an SSH config read from, e.g., ~/.ssh/config
+type SSHConfig struct {
 	Alias           string
 	User            string
 	HostName        string
@@ -66,7 +66,7 @@ var (
 	}
 )
 
-func ParseSSHConfig(alias string) (*sshConfig, error) {
+func ParseSSHConfig(alias string) (*SSHConfig, error) {
 	// We create a new ss_config.UserSettings object at each connection so that
 	// config file changes are reflected immediately.
 	us := ossh_config.MakeDefaultUserSettings()
@@ -76,7 +76,7 @@ func ParseSSHConfig(alias string) (*sshConfig, error) {
 		return nil, err
 	}
 
-	c := &sshConfig{Alias: alias}
+	c := &SSHConfig{Alias: alias}
 	sub := makeSubst(alias)
 
 	c.HostName = sub.apply(us.Get(alias, "HostName", ""), hostnameTokens)
@@ -128,12 +128,12 @@ func ParseSSHConfig(alias string) (*sshConfig, error) {
 	return c, nil
 }
 
-// toHops creates an ordered series of chops from an sshConfig
-func (sc *sshConfig) ToHops() ([]Hop, error) {
+// toHops creates an ordered series of chops from an SSHConfig
+func (sc *SSHConfig) ToHops() ([]Hop, error) {
 	return sc.toHopsImpl(false, 0)
 }
 
-func (sc *sshConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, error) {
+func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, error) {
 	if depth > maxJumpRecursions {
 		return nil, fmt.Errorf("maximum jump recursions exceeded")
 	}
@@ -206,7 +206,7 @@ func (sc *sshConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 	return hops, nil
 }
 
-func (sc *sshConfig) makeSigners() ([]ssh.Signer, error) {
+func (sc *SSHConfig) makeSigners() ([]ssh.Signer, error) {
 	var sigs []ssh.Signer
 
 	// Potential agent keys are added first
@@ -236,7 +236,7 @@ func (sc *sshConfig) makeSigners() ([]ssh.Signer, error) {
 	return sigs, nil
 }
 
-func (sc *sshConfig) makeCallbackAndAlgos() (cb ssh.HostKeyCallback, algs []string, err error) {
+func (sc *SSHConfig) makeCallbackAndAlgos() (cb ssh.HostKeyCallback, algs []string, err error) {
 	if sc.KeyCheck == strict {
 		var hosts []string
 		for _, k := range sc.KnownHostsFiles {
@@ -266,7 +266,7 @@ func (sc *sshConfig) makeCallbackAndAlgos() (cb ssh.HostKeyCallback, algs []stri
 	return
 }
 
-func (sc *sshConfig) validate() error {
+func (sc *SSHConfig) validate() error {
 	if sc.HostName == "" {
 		return fmt.Errorf("no host specified.")
 	}
@@ -279,7 +279,7 @@ func (sc *sshConfig) validate() error {
 	return nil
 }
 
-func (sc *sshConfig) EnsureUser() {
+func (sc *SSHConfig) EnsureUser() {
 	// Like ssh(1), use $USER if no user specified
 	if sc.User == "" {
 		if u, err := user.Current(); err == nil {
