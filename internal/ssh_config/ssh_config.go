@@ -12,6 +12,7 @@ import (
 	"github.com/alebeck/boring/internal/agent"
 	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/paths"
+	ossh_config "github.com/alebeck/ssh_config"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
@@ -20,8 +21,6 @@ const (
 	sshConnTimeout    = 10 * time.Second
 	maxJumpRecursions = 20
 )
-
-var defaultKeys = []string{"~/.ssh/id_rsa", "~/.ssh/id_ecdsa", "~/.ssh/id_ed25519"}
 
 type keyCheck int
 
@@ -68,23 +67,27 @@ var (
 )
 
 func ParseSSHConfig(alias string) (*sshConfig, error) {
-	d, err := makeSSHConfigSpec()
-	if err != nil {
+	// We create a new ss_config.UserSettings object at each connection so that
+	// config file changes are reflected immediately.
+	us := ossh_config.MakeDefaultUserSettings()
+
+	// This is a dummy query to catch potential parsing errors early
+	if _, err := us.GetStrict(alias, "HostName", ""); err != nil {
 		return nil, err
 	}
 
 	c := &sshConfig{Alias: alias}
 	sub := makeSubst(alias)
 
-	c.HostName = sub.apply(d.Get(alias, "HostName"), hostnameTokens)
+	c.HostName = sub.apply(us.Get(alias, "HostName", ""), hostnameTokens)
 	sub["%h"] = c.HostName
 
-	c.User = d.Get(alias, "User")
+	c.User = us.Get(alias, "User", "")
 	sub["%r"] = c.User
-	c.Port, _ = strconv.Atoi(d.Get(alias, "Port"))
+	c.Port, _ = strconv.Atoi(us.Get(alias, "Port", ""))
 	sub["%p"] = fmt.Sprintf("%d", c.Port)
 
-	s := d.Get(alias, "StrictHostKeyChecking")
+	s := us.Get(alias, "StrictHostKeyChecking", "")
 	if s == "no" || s == "off" {
 		c.KeyCheck = off
 	} else if s == "accept-new" {
@@ -95,13 +98,13 @@ func ParseSSHConfig(alias string) (*sshConfig, error) {
 			"unsupported StrictHostKeyChecking option '%v'", s)
 	}
 
-	c.Ciphers = split(d.Get(alias, "Ciphers"))
-	c.Macs = split(d.Get(alias, "MACs"))
-	c.HostKeyAlgos = split(d.Get(alias, "HostKeyAlgorithms"))
-	c.KexAlgos = split(d.Get(alias, "KexAlgorithms"))
+	c.Ciphers = split(us.Get(alias, "Ciphers", ""))
+	c.Macs = split(us.Get(alias, "MACs", ""))
+	c.HostKeyAlgos = split(us.Get(alias, "HostKeyAlgorithms", ""))
+	c.KexAlgos = split(us.Get(alias, "KexAlgorithms", ""))
 
 	// Jump hosts
-	pj := sub.apply(d.Get(alias, "ProxyJump"), proxyTokens)
+	pj := sub.apply(us.Get(alias, "ProxyJump", ""), proxyTokens)
 	sub["%j"] = pj
 	if pj != "" {
 		for _, j := range split(pj) {
@@ -113,11 +116,11 @@ func ParseSSHConfig(alias string) (*sshConfig, error) {
 		}
 	}
 
-	c.IdentityFiles = sub.applyAll(d.GetAll(alias, "IdentityFile"), identFileTokens)
+	c.IdentityFiles = sub.applyAll(us.GetAll(alias, "IdentityFile", ""), identFileTokens)
 
 	// Known hosts
-	hosts := d.GetAll(alias, "GlobalKnownHostsFile")
-	hosts = append(hosts, sub.applyAll(d.GetAll(alias, "UserKnownHostsFile"), identFileTokens)...)
+	hosts := us.GetAll(alias, "GlobalKnownHostsFile", "")
+	hosts = append(hosts, sub.applyAll(us.GetAll(alias, "UserKnownHostsFile", ""), identFileTokens)...)
 	for _, h := range hosts {
 		c.KnownHostsFiles = append(c.KnownHostsFiles, strings.Split(h, " ")...)
 	}
@@ -206,33 +209,24 @@ func (sc *sshConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 func (sc *sshConfig) makeSigners() ([]ssh.Signer, error) {
 	var sigs []ssh.Signer
 
-	addKeyFiles := func(files []string) {
-		for _, f := range files {
-			s, err := loadKey(f)
-			if err != nil {
-				log.Warningf("key file %q could not be added: %v", f, err)
-				continue
-			}
-			sigs = append(sigs, *s)
-		}
-	}
-
-	addKeyFiles(sc.IdentityFiles)
-
-	if len(sigs) > 0 {
-		return sigs, nil
-	}
-
-	log.Warningf("No key files specified, trying default ones")
-	addKeyFiles(defaultKeys)
-
-	// Also add potential keys exposed by ssh-agent
+	// Potential agent keys are added first
 	agentSigs, err := agent.GetSigners()
 	if err != nil {
 		log.Warningf("Unable to get keys from ssh-agent: %v", err)
 	} else {
 		sigs = append(sigs, agentSigs...)
-		log.Debugf("Added %d signers from ssh-agent", len(agentSigs))
+		log.Debugf("Will try %d key(s) from ssh-agent", len(agentSigs))
+	}
+
+	// Add keys from IdentityFiles
+	for _, f := range sc.IdentityFiles {
+		s, err := loadKey(f)
+		if err != nil {
+			log.Warningf("key file %q could not be added: %v", f, err)
+			continue
+		}
+		log.Debugf("Will try key: %s", f)
+		sigs = append(sigs, *s)
 	}
 
 	if len(sigs) == 0 {
