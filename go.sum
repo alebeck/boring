@@ -1,7 +1,7 @@
 github.com/BurntSushi/toml v1.4.0 h1:kuoIxZQy2WRRk1pttg9asf+WVv6tWQuBNVmK8+nqPr0=
 github.com/BurntSushi/toml v1.4.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
-github.com/alebeck/ssh_config v0.1.4 h1:2vHWPXrmrt1pQdrbtrXKi7Mxo4XC+oxbV54Oy7T/xJM=
-github.com/alebeck/ssh_config v0.1.4/go.mod h1:sq9yKGUL2Q3+S1XSZsAW4XVg2Qe10qyXEAtx+ef2scw=
+github.com/alebeck/ssh_config v0.1.5 h1:aA9OdrPPBCOx5IXD9JTiM8t0LXlRbcP9ZTfoJSS9bAc=
+github.com/alebeck/ssh_config v0.1.5/go.mod h1:sq9yKGUL2Q3+S1XSZsAW4XVg2Qe10qyXEAtx+ef2scw=
 golang.org/x/crypto v0.31.0 h1:ihbySMvVjLAeSH1IbfcRTkD/iNscyz8rGzjF/E5hV6U=
 golang.org/x/crypto v0.31.0/go.mod h1:kDsLvtWBEx7MV9tJOj9bnXsPbxwJQ6csT/x4KIN4Ssk=
 golang.org/x/sync v0.8.0 h1:3NFvSEYkUoMifnESzZl15y791HH1qU2xm6eCJU5ZPXQ=

@@ -92,7 +92,8 @@ func (t *Tunnel) Open() (err error) {
 }
 
 func (t *Tunnel) prepare() error {
-	sc, err := ssh_config.ParseSSHConfig(t.Host)
+	// We need to pass the user as it's needed for matching Match blocks
+	sc, err := ssh_config.ParseSSHConfig(t.Host, t.User)
 	if err != nil {
 		return fmt.Errorf("could not parse SSH config: %v", err)
 	}

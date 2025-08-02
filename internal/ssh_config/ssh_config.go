@@ -66,12 +66,15 @@ var (
 	}
 )
 
-func ParseSSHConfig(alias string) (*SSHConfig, error) {
-	// We create a new ss_config.UserSettings object at each connection so that
-	// config file changes are reflected immediately.
+func ParseSSHConfig(alias, user string) (*SSHConfig, error) {
+	// We create a new ssh_config.UserSettings object at each connection so that
+	// config file changes are reflected immediately. In the following, we always
+	// provide `user` since it is needed for `Match` matching
 	us := ossh_config.MakeDefaultUserSettings()
+	get := func(key string) string { return us.Get(alias, key, user) }
+	getAll := func(key string) []string { return us.GetAll(alias, key, user) }
 
-	// This is a dummy query to catch potential parsing errors early
+	// This is a "strict" dummy query to catch potential parsing errors early
 	if _, err := us.GetStrict(alias, "HostName", ""); err != nil {
 		return nil, err
 	}
@@ -79,15 +82,15 @@ func ParseSSHConfig(alias string) (*SSHConfig, error) {
 	c := &SSHConfig{Alias: alias}
 	sub := makeSubst(alias)
 
-	c.HostName = sub.apply(us.Get(alias, "HostName", ""), hostnameTokens)
+	c.HostName = sub.apply(get("HostName"), hostnameTokens)
 	sub["%h"] = c.HostName
 
-	c.User = us.Get(alias, "User", "")
+	c.User = get("User")
 	sub["%r"] = c.User
-	c.Port, _ = strconv.Atoi(us.Get(alias, "Port", ""))
+	c.Port, _ = strconv.Atoi(get("Port"))
 	sub["%p"] = fmt.Sprintf("%d", c.Port)
 
-	s := us.Get(alias, "StrictHostKeyChecking", "")
+	s := get("StrictHostKeyChecking")
 	if s == "no" || s == "off" {
 		c.KeyCheck = off
 	} else if s == "accept-new" {
@@ -98,13 +101,13 @@ func ParseSSHConfig(alias string) (*SSHConfig, error) {
 			"unsupported StrictHostKeyChecking option '%v'", s)
 	}
 
-	c.Ciphers = split(us.Get(alias, "Ciphers", ""))
-	c.Macs = split(us.Get(alias, "MACs", ""))
-	c.HostKeyAlgos = split(us.Get(alias, "HostKeyAlgorithms", ""))
-	c.KexAlgos = split(us.Get(alias, "KexAlgorithms", ""))
+	c.Ciphers = split(get("Ciphers"))
+	c.Macs = split(get("MACs"))
+	c.HostKeyAlgos = split(get("HostKeyAlgorithms"))
+	c.KexAlgos = split(get("KexAlgorithms"))
 
 	// Jump hosts
-	pj := sub.apply(us.Get(alias, "ProxyJump", ""), proxyTokens)
+	pj := sub.apply(get("ProxyJump"), proxyTokens)
 	sub["%j"] = pj
 	if pj != "" {
 		for _, j := range split(pj) {
@@ -116,11 +119,11 @@ func ParseSSHConfig(alias string) (*SSHConfig, error) {
 		}
 	}
 
-	c.IdentityFiles = sub.applyAll(us.GetAll(alias, "IdentityFile", ""), identFileTokens)
+	c.IdentityFiles = sub.applyAll(getAll("IdentityFile"), identFileTokens)
 
 	// Known hosts
-	hosts := us.GetAll(alias, "GlobalKnownHostsFile", "")
-	hosts = append(hosts, sub.applyAll(us.GetAll(alias, "UserKnownHostsFile", ""), identFileTokens)...)
+	hosts := getAll("GlobalKnownHostsFile")
+	hosts = append(hosts, sub.applyAll(getAll("UserKnownHostsFile"), identFileTokens)...)
 	for _, h := range hosts {
 		c.KnownHostsFiles = append(c.KnownHostsFiles, strings.Split(h, " ")...)
 	}
@@ -128,7 +131,7 @@ func ParseSSHConfig(alias string) (*SSHConfig, error) {
 	return c, nil
 }
 
-// toHops creates an ordered series of chops from an SSHConfig
+// ToHops creates an ordered series of Hops from an SSHConfig
 func (sc *SSHConfig) ToHops() ([]Hop, error) {
 	return sc.toHopsImpl(false, 0)
 }
@@ -148,7 +151,7 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 
 	var hops []Hop
 	for i, j := range sc.Jumps {
-		jc, err := ParseSSHConfig(j.host)
+		jc, err := ParseSSHConfig(j.host, j.user)
 		if err != nil {
 			return nil, fmt.Errorf("could not parse SSH config for %v: %v", j.host, err)
 		}
