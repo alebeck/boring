@@ -10,6 +10,10 @@ A simple command line SSH tunnel manager that just works
 ![GitHub Release](https://img.shields.io/github/v/release/alebeck/boring?color=orange) [![Go Report Card](https://goreportcard.com/badge/github.com/alebeck/boring)](https://goreportcard.com/report/github.com/alebeck/boring)
 ![Static Badge](https://img.shields.io/badge/license-MIT-blue?)
 
+```sh
+brew install boring
+```
+
 </div>
 
 ## Demo
@@ -23,6 +27,7 @@ A simple command line SSH tunnel manager that just works
 * Supports Unix sockets
 * Automatic reconnection and keep-alives
 * Human-friendly configuration via TOML
+* Supports macOS, Linux, and Windows
 
 ## Usage
 
