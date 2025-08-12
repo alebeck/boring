@@ -21,11 +21,12 @@ Get it: `brew install boring`
 
 * Ultra lightweight and fast
 * Local, remote and dynamic (SOCKS5) port forwarding
-* Compatible with SSH config and `ssh-agent`
+* Works with SSH config and `ssh-agent`
 * Supports Unix sockets
 * Automatic reconnection and keep-alives
-* Human-friendly configuration via TOML
-* Supports macOS, Linux, and Windows
+* Human-friendly TOML configuration
+* Cross-platform support
+* Smart shell completions
 
 ## Usage
 
