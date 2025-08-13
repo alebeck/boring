@@ -34,7 +34,9 @@ var cmdKindNames = map[CmdKind]string{
 	List:  "List",
 }
 
-var sock, logFile, executableFile string
+var sock, logFile string
+
+var doNotSpawn = os.Getenv("BORING_NO_SPAWN") != ""
 
 func init() {
 	if sock = os.Getenv("BORING_SOCK"); sock == "" {
@@ -64,7 +66,8 @@ type Resp struct {
 	Tunnels map[string]tunnel.TunnelDesc `json:"tunnels"`
 }
 
-// Ensure starts the daemon if it is not already running.
+// Ensure starts the daemon if it is not already running, provided
+// that the BORING_NO_SPAWN environment variable is not set.
 func Ensure(ctx context.Context) error {
 	starting := false
 	wait := time.NewTimer(0.)
@@ -79,9 +82,12 @@ func Ensure(ctx context.Context) error {
 				go func() { conn.Close() }()
 				return nil
 			}
+			if doNotSpawn {
+				return fmt.Errorf("daemon is not running and BORING_NO_SPAWN is set")
+			}
 			if !starting {
 				if err := startDaemon(); err != nil {
-					return fmt.Errorf("Failed to start daemon: %v", err)
+					return fmt.Errorf("failed to start daemon: %v", err)
 				}
 				starting = true
 			}
