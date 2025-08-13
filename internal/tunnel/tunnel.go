@@ -22,10 +22,9 @@ const (
 	reconnectTimeout  = 15 * time.Minute
 )
 
-// TunnelDesc describes a tunnel for user-facing purposes, e.g.,
-// in the config file and in the TUI.
-// TODO: rename to "Desc"
-type TunnelDesc struct {
+// Desc describes a tunnel for user-facing purposes, e.g., in the config file
+// and in the TUI.
+type Desc struct {
 	Name          string      `toml:"name" json:"name"`
 	LocalAddress  StringOrInt `toml:"local" json:"local"`
 	RemoteAddress StringOrInt `toml:"remote" json:"remote"`
@@ -51,15 +50,15 @@ type Tunnel struct {
 	client     *ssh.Client
 	localAddr  *address
 	remoteAddr *address
-	*TunnelDesc
+	*Desc
 }
 
 type address struct {
 	addr, net string
 }
 
-func FromDesc(desc *TunnelDesc) *Tunnel {
-	return &Tunnel{TunnelDesc: desc}
+func FromDesc(desc *Desc) *Tunnel {
+	return &Tunnel{Desc: desc}
 }
 
 func (t *Tunnel) Open() (err error) {

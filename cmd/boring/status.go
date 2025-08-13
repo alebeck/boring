@@ -8,7 +8,7 @@ import (
 	"github.com/alebeck/boring/internal/tunnel"
 )
 
-func status(t *tunnel.TunnelDesc) string {
+func status(t *tunnel.Desc) string {
 	switch t.Status {
 	case tunnel.Closed:
 		return log.Red + "closed" + log.Reset

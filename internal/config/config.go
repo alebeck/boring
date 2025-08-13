@@ -24,12 +24,12 @@ var Path string
 // Config represents the application configuration as parsed from ./boring.toml
 type Config struct {
 	// Tunnels is a list of tunnel descriptions
-	Tunnels []tunnel.TunnelDesc `toml:"tunnels"`
+	Tunnels []tunnel.Desc `toml:"tunnels"`
 	// KeepAlive allows to specify a global keep alive interval,
 	// (in seconds) overriding the default one. `0` indicates
 	// no keep alive.
-	KeepAlive  *int                          `toml:"keep_alive"`
-	TunnelsMap map[string]*tunnel.TunnelDesc `toml:"-"`
+	KeepAlive  *int                    `toml:"keep_alive"`
+	TunnelsMap map[string]*tunnel.Desc `toml:"-"`
 }
 
 func init() {
@@ -70,7 +70,7 @@ func Load() (*Config, error) {
 	}
 
 	// Create a map of tunnel names to tunnel pointers for easy lookup later
-	m := make(map[string]*tunnel.TunnelDesc)
+	m := make(map[string]*tunnel.Desc)
 	for i := range cfg.Tunnels {
 		t := &cfg.Tunnels[i]
 		if _, exists := m[t.Name]; exists {

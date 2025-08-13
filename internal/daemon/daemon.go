@@ -145,7 +145,7 @@ func respond(conn net.Conn, err *error) {
 	}
 }
 
-func openTunnel(s *state, conn net.Conn, d *tunnel.TunnelDesc) {
+func openTunnel(s *state, conn net.Conn, d *tunnel.Desc) {
 	var err error
 	defer respond(conn, &err)
 
@@ -178,7 +178,7 @@ func openTunnel(s *state, conn net.Conn, d *tunnel.TunnelDesc) {
 	}()
 }
 
-func closeTunnel(s *state, conn net.Conn, q *tunnel.TunnelDesc) {
+func closeTunnel(s *state, conn net.Conn, q *tunnel.Desc) {
 	var err error
 	defer respond(conn, &err)
 
@@ -199,10 +199,10 @@ func closeTunnel(s *state, conn net.Conn, q *tunnel.TunnelDesc) {
 }
 
 func listTunnels(s *state, conn net.Conn) {
-	m := make(map[string]tunnel.TunnelDesc)
+	m := make(map[string]tunnel.Desc)
 	s.mutex.RLock()
 	for n, t := range s.tunnels {
-		m[n] = *t.TunnelDesc
+		m[n] = *t.Desc
 	}
 	s.mutex.RUnlock()
 

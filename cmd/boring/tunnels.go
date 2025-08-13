@@ -132,7 +132,7 @@ func controlTunnels(args []string, kind daemon.CmdKind) {
 	}
 }
 
-func openTunnel(t *tunnel.TunnelDesc) error {
+func openTunnel(t *tunnel.Desc) error {
 	var resp daemon.Resp
 	cmd := daemon.Cmd{Kind: daemon.Open, Tunnel: *t}
 	if err := transmitCmd(cmd, &resp); err != nil {
@@ -155,9 +155,9 @@ func openTunnel(t *tunnel.TunnelDesc) error {
 	return nil
 }
 
-func closeTunnel(t *tunnel.TunnelDesc) error {
+func closeTunnel(t *tunnel.Desc) error {
 	// Daemon only needs the name, so simplify
-	t = &tunnel.TunnelDesc{Name: t.Name}
+	t = &tunnel.Desc{Name: t.Name}
 
 	var resp daemon.Resp
 	cmd := daemon.Cmd{Kind: daemon.Close, Tunnel: *t}
@@ -174,7 +174,7 @@ func closeTunnel(t *tunnel.TunnelDesc) error {
 	return nil
 }
 
-func getRunningTunnels() (map[string]*tunnel.TunnelDesc, error) {
+func getRunningTunnels() (map[string]*tunnel.Desc, error) {
 	var resp daemon.Resp
 	cmd := daemon.Cmd{Kind: daemon.List}
 	if err := transmitCmd(cmd, &resp); err != nil {
@@ -183,7 +183,7 @@ func getRunningTunnels() (map[string]*tunnel.TunnelDesc, error) {
 	if !resp.Success {
 		return nil, fmt.Errorf("%s", resp.Error)
 	}
-	m := make(map[string]*tunnel.TunnelDesc, len(resp.Tunnels))
+	m := make(map[string]*tunnel.Desc, len(resp.Tunnels))
 	for _, t := range resp.Tunnels {
 		m[t.Name] = &t
 	}
@@ -248,7 +248,7 @@ func transmitCmd(cmd daemon.Cmd, resp any) error {
 }
 
 func filterGlob(
-	ts map[string]*tunnel.TunnelDesc, keep map[string]bool, pat string) (
+	ts map[string]*tunnel.Desc, keep map[string]bool, pat string) (
 	n int, err error) {
 	// Fail early if pattern is malformed; if this passes we can
 	// ignore the error return value of the following matches

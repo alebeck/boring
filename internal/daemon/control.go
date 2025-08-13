@@ -56,14 +56,14 @@ func (k CmdKind) String() string {
 }
 
 type Cmd struct {
-	Kind   CmdKind           `json:"kind"`
-	Tunnel tunnel.TunnelDesc `json:"tunnel,omitempty"`
+	Kind   CmdKind     `json:"kind"`
+	Tunnel tunnel.Desc `json:"tunnel,omitempty"`
 }
 
 type Resp struct {
-	Success bool                         `json:"success"`
-	Error   string                       `json:"error"`
-	Tunnels map[string]tunnel.TunnelDesc `json:"tunnels"`
+	Success bool                   `json:"success"`
+	Error   string                 `json:"error"`
+	Tunnels map[string]tunnel.Desc `json:"tunnels"`
 }
 
 // Ensure starts the daemon if it is not already running, provided
