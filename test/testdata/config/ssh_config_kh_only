@@ -1,0 +1,2 @@
+Match all
+    UserKnownHostsFile ../testdata/known_hosts/known_hosts

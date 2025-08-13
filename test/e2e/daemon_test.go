@@ -1,0 +1,96 @@
+package e2e
+
+import (
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"syscall"
+	"testing"
+)
+
+func pidRunning(pid int) bool {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	// See https://pkg.go.dev/os#FindProcess
+	err = proc.Signal(syscall.Signal(0))
+	return err == nil
+}
+
+func killPID(pid int) error {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	// daemon will shut down gracefully, emitting coverage data
+	return proc.Signal(syscall.SIGTERM)
+}
+
+func testDaemonLaunch(t *testing.T, env []string) {
+	c, out, err := cliCommand(env, "list")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 0 {
+		t.Fatalf("exit code %d: %s", c, out)
+	}
+
+	// debug output should contain the PID of the daemon
+	re := regexp.MustCompile(`PID\s(\d+)`)
+	match := re.FindStringSubmatch(out)
+	if len(match) < 2 {
+		t.Fatalf("PID not in output")
+	}
+	pid, err := strconv.Atoi(match[1])
+	if err != nil {
+		t.Fatalf("invalid PID: %v", err)
+	}
+
+	// verify daemon is running
+	if !pidRunning(pid) {
+		t.Fatalf("pid %d not running", pid)
+	}
+
+	if err := killPID(pid); err != nil {
+		t.Fatalf("failed to kill daemon: %v", err)
+	}
+}
+
+// Test that daemon is correctly started if not running
+func TestDaemonLaunch(t *testing.T) {
+	cfg := defaultConfig
+	cfg.noSpawn = false
+	cfg.debug = true
+	env, err := makeEnv(cfg, t)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	testDaemonLaunch(t, env)
+}
+
+// Test that we can recover from a situation where the socket exists
+// but is not bindable, this can happen after force shutdowns.
+func TestDaemonLaunchBadSocket(t *testing.T) {
+	cfg := defaultConfig
+	cfg.noSpawn = false
+	cfg.debug = true
+	env, err := makeEnv(cfg, t)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+
+	// Create non-bindable file
+	var s string
+	for _, e := range env {
+		if strings.HasPrefix(e, "BORING_SOCK=") {
+			s = strings.Split(e, "=")[1]
+		}
+	}
+	if err = os.WriteFile(s, []byte("test"), 111); err != nil {
+		t.Fatalf("could not create socket file: %v", err)
+	}
+
+	testDaemonLaunch(t, env)
+}

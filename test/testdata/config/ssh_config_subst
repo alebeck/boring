@@ -1,0 +1,7 @@
+Match all
+    HostName 127.0.0.1
+    Port 58391
+    User test
+    IdentityFile ../testdata/keys/client
+    # this only exists if substitutions work
+    UserKnownHostsFile ../testdata/known_hosts/known_hosts-%h-%p-%r

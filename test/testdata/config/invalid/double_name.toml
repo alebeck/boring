@@ -1,0 +1,11 @@
+[[tunnels]]
+name = "test"
+host = "127.0.0.1"
+local = "localhost:49712"
+remote = "localhost:49712"
+
+[[tunnels]]
+name = "test"
+host = "127.0.0.1"
+local = "localhost:49712"
+remote = "localhost:49712"

@@ -1,0 +1,9 @@
+Match final all
+    User test
+    Port 58391
+    IdentityFile ../testdata/keys/client
+    UserKnownHostsFile ../testdata/known_hosts/known_hosts
+
+Match user jump
+    # two jumps, one with explicit user and one without
+    ProxyJump user@127.0.0.1:58391,127.0.0.1:58391

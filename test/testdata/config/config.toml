@@ -1,0 +1,58 @@
+keep_alive = 0
+
+[[tunnels]]
+name = "test"
+host = "127.0.0.1"
+local = 49711
+remote = "localhost:49712"
+
+[[tunnels]]
+name = "test-manual"
+mode = "local"
+host = "127.0.0.1"
+port = 58391
+local = "localhost:49711"
+remote = "localhost:49712"
+user = "test"
+identity = "../testdata/keys/client"
+
+[[tunnels]]
+name = "test-remote"
+mode = "remote"
+host = "127.0.0.1"
+local = "localhost:49711"
+remote = "localhost:49712"
+
+[[tunnels]]
+name = "test-jump"
+user = "jump"
+host = "127.0.0.1"
+local = "localhost:49711"
+remote = "localhost:49712"
+
+[[tunnels]]
+name = "test-socks"
+mode = "socks"
+user = "test"
+host = "127.0.0.1"
+local = "localhost:49717"
+
+[[tunnels]]
+name = "test-socks-remote"
+mode = "socks-remote"
+user = "test"
+host = "127.0.0.1"
+remote = "localhost:49717"
+
+[[tunnels]]
+name = "test-keepalive"
+host = "127.0.0.1"
+local = "localhost:49711"
+remote = "localhost:49712"
+keep_alive = 1
+
+[[tunnels]]
+name = "test-bad-fwd-config"
+host = "127.0.0.1"
+local = "49711"
+remote = "49712"
