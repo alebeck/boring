@@ -118,7 +118,7 @@ func (t *Tunnel) prepare() error {
 
 	// Infer series of hops from ssh config
 	if t.hops, err = sc.ToHops(); err != nil {
-		return fmt.Errorf("could not prepare connection to %v: %v", sc.HostName, err)
+		return err
 	}
 
 	allowShort := t.Mode == Remote || t.Mode == RemoteSocks
