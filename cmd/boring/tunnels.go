@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/alebeck/boring/internal/config"
@@ -20,6 +20,8 @@ import (
 )
 
 const daemonTimeout = 2 * time.Second
+
+var errOpFailed = errors.New("operation failed")
 
 // prepare loads the configuration and ensures the daemon is running
 func prepare() (*config.Config, error) {
@@ -112,42 +114,48 @@ func controlTunnels(args []string, kind daemon.CmdKind) {
 	}
 
 	// Issue concurrent commands for all tunnels
-	var wg sync.WaitGroup
+	var g errgroup.Group
 	for n := range keep {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		g.Go(func() error {
 			if kind == daemon.Open {
-				openTunnel(tunnels[n])
+				return openTunnel(tunnels[n])
 			} else if kind == daemon.Close {
-				closeTunnel(tunnels[n])
+				return closeTunnel(tunnels[n])
 			}
-		}()
+			panic("unknown command kind: " + kind.String())
+		})
 	}
-	wg.Wait()
+	// This is just for determining the exit code really,
+	// a detailed message will have been logged to the user.
+	if err := g.Wait(); err != nil {
+		os.Exit(1)
+	}
 }
 
-func openTunnel(t *tunnel.TunnelDesc) {
+func openTunnel(t *tunnel.TunnelDesc) error {
 	var resp daemon.Resp
 	cmd := daemon.Cmd{Kind: daemon.Open, Tunnel: *t}
 	if err := transmitCmd(cmd, &resp); err != nil {
 		log.Errorf("Could not transmit 'open' command: %v", err)
+		return errOpFailed
 	}
 
 	if !resp.Success {
 		// cannot use errors.Is because error is transmitted as string over IPC
 		if strings.HasSuffix(resp.Error, daemon.AlreadyRunning.Error()) {
 			log.Infof("Tunnel '%v' is already running.", t.Name)
-			return
+			return nil
 		}
 		log.Errorf("Could not open tunnel '%v': %v", t.Name, resp.Error)
-	} else {
-		log.Infof("Opened tunnel '%s': %s %v %s via %s.", log.Green+log.Bold+t.Name+log.Reset,
-			t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
+		return errOpFailed
 	}
+
+	log.Infof("Opened tunnel '%s': %s %v %s via %s.", log.Green+log.Bold+t.Name+log.Reset,
+		t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
+	return nil
 }
 
-func closeTunnel(t *tunnel.TunnelDesc) {
+func closeTunnel(t *tunnel.TunnelDesc) error {
 	// Daemon only needs the name, so simplify
 	t = &tunnel.TunnelDesc{Name: t.Name}
 
@@ -155,13 +163,15 @@ func closeTunnel(t *tunnel.TunnelDesc) {
 	cmd := daemon.Cmd{Kind: daemon.Close, Tunnel: *t}
 	if err := transmitCmd(cmd, &resp); err != nil {
 		log.Errorf("Could not transmit 'close' command: %v", err)
+		return errOpFailed
 	}
 
 	if !resp.Success {
 		log.Errorf("Tunnel '%v' could not be closed: %v", t.Name, resp.Error)
-	} else {
-		log.Infof("Closed tunnel '%s'.", log.Green+log.Bold+t.Name+log.Reset)
+		return errOpFailed
 	}
+	log.Infof("Closed tunnel '%s'.", log.Green+log.Bold+t.Name+log.Reset)
+	return nil
 }
 
 func getRunningTunnels() (map[string]*tunnel.TunnelDesc, error) {
