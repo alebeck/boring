@@ -36,6 +36,8 @@ func Run() {
 	if err != nil {
 		log.Fatalf("Failed to setup listener: %v", err)
 	}
+	log.Infof("Listening on %s", l.Addr())
+
 	go watchSignal(l)
 
 	var wg sync.WaitGroup
