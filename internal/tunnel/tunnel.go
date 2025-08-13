@@ -24,6 +24,7 @@ const (
 
 // TunnelDesc describes a tunnel for user-facing purposes, e.g.,
 // in the config file and in the TUI.
+// TODO: rename to "Desc"
 type TunnelDesc struct {
 	Name          string      `toml:"name" json:"name"`
 	LocalAddress  StringOrInt `toml:"local" json:"local"`
