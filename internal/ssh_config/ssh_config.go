@@ -22,6 +22,8 @@ const (
 	maxJumpRecursions = 20
 )
 
+var overrideConfig = os.Getenv("BORING_SSH_CONFIG")
+
 type keyCheck int
 
 const (
@@ -68,22 +70,27 @@ var (
 
 func ParseSSHConfig(alias, user string) (*SSHConfig, error) {
 	// We create a new ssh_config.UserSettings object at each connection so that
-	// config file changes are reflected immediately. In the following, we always
-	// provide `user` since it is needed for `Match` matching
+	// config file changes are reflected immediately.
 	us := ossh_config.MakeDefaultUserSettings()
-	get := func(key string) string { return us.Get(alias, key, user) }
-	getAll := func(key string) []string { return us.GetAll(alias, key, user) }
+	if overrideConfig != "" {
+		us.ConfigFinder(func() string { return overrideConfig })
+	}
 
 	// This is a "strict" dummy query to catch potential parsing errors early
 	if _, err := us.GetStrict(alias, "HostName", ""); err != nil {
 		return nil, err
 	}
 
+	// In the following, we always provide `user` since it is needed for `Match` matching
+	get := func(key string) string { return us.Get(alias, key, user) }
+	getAll := func(key string) []string { return us.GetAll(alias, key, user) }
+
 	c := &SSHConfig{Alias: alias}
 	sub := makeSubst(alias)
 
-	c.HostName = sub.apply(get("HostName"), hostnameTokens)
-	sub["%h"] = c.HostName
+	if c.HostName = sub.apply(get("HostName"), hostnameTokens); c.HostName != "" {
+		sub["%h"] = c.HostName
+	}
 
 	c.User = get("User")
 	sub["%r"] = c.User
@@ -256,7 +263,7 @@ func (sc *SSHConfig) makeCallbackAndAlgos() (cb ssh.HostKeyCallback, algs []stri
 		known := extractHostKeyAlgos(cb, net.JoinHostPort(sc.HostName, strconv.Itoa(sc.Port)))
 		algs = filter(sc.HostKeyAlgos, known)
 		if len(algs) == 0 {
-			return nil, nil, fmt.Errorf("%v: no suitable host key algorithms found: configured are %v, "+
+			return nil, nil, fmt.Errorf("%v: could not determine host key algorithms: default are %v, "+
 				"available in known_hosts are %v. %v%vNote that boring does not automatically add keys to "+
 				"your known_hosts.%v", sc.Alias, sc.HostKeyAlgos, known, log.Bold, log.Red, log.Reset)
 		}
