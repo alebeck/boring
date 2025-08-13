@@ -24,7 +24,10 @@ func main() {
 	}
 
 	// Emit --shell completions if requested, and exit
-	handleCompletions()
+	if len(os.Args) == 3 && os.Args[1] == "--shell" {
+		handleCompletions()
+		os.Exit(0)
+	}
 
 	initLogging()
 
@@ -60,9 +63,6 @@ func main() {
 }
 
 func handleCompletions() {
-	if len(os.Args) != 3 || os.Args[1] != "--shell" {
-		return
-	}
 	switch os.Args[2] {
 	case "bash":
 		fmt.Print(completions.Bash)
@@ -72,7 +72,6 @@ func handleCompletions() {
 		fmt.Print(completions.Fish)
 	default:
 	}
-	os.Exit(0)
 }
 
 func initLogging() {
