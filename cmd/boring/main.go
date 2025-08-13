@@ -11,7 +11,8 @@ import (
 	"golang.org/x/term"
 )
 
-var isTerm = term.IsTerminal(int(os.Stdout.Fd()))
+var isTerm = os.Getenv("BORING_FORCE_INTERACTIVE") != "" ||
+	term.IsTerminal(int(os.Stdout.Fd()))
 
 var version, commit string
 
