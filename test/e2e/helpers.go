@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/alebeck/boring/internal/daemon"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -85,23 +86,37 @@ func getEnv(env []string, key string) (val string) {
 }
 
 func daemonWithCancel(env []string) (context.CancelFunc, error) {
-	//ctx, cancel := context.WithCancel(context.Background())
-	// cmd := exec.CommandContext(ctx, binary, daemon.Flag)
 	cmd := exec.Command(binary, daemon.Flag)
 	cmd.Env = env
 
 	if err := cmd.Start(); err != nil {
-		// cancel()
 		return nil, err
 	}
-	// Give the daemon some time to start
-	time.Sleep(100 * time.Millisecond)
 
 	cancel := func() {
 		cmd.Process.Signal(syscall.SIGTERM)
 		cmd.Wait()
 	}
-	return cancel, nil
+
+	// Wait for daemon to start
+	wait := time.NewTimer(0.)
+	waitTime := 2 * time.Millisecond
+	timeout := time.After(500 * time.Millisecond)
+	sock := getEnv(env, "BORING_SOCK")
+
+	for {
+		select {
+		case <-timeout:
+			return nil, fmt.Errorf("deamon not responsive after timeout")
+		case <-wait.C:
+			if conn, err := net.Dial("unix", sock); err == nil {
+				conn.Close()
+				return cancel, nil
+			}
+			wait.Reset(waitTime)
+			waitTime *= 2
+		}
+	}
 }
 
 func makeEnvWithDaemon(c config, t *testing.T) ([]string, context.CancelFunc, error) {
