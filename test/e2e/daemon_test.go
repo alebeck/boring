@@ -7,6 +7,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 func pidRunning(pid int) bool {
@@ -55,6 +56,13 @@ func testDaemonLaunch(t *testing.T, env []string) {
 
 	if err := killPID(pid); err != nil {
 		t.Fatalf("failed to kill daemon: %v", err)
+	}
+
+	// Finally check for graceful termination
+	time.Sleep(50 * time.Millisecond)
+	sock := getEnv(env, "BORING_SOCK")
+	if _, err = os.Stat(sock); err == nil {
+		t.Fatalf("sock file exists after termination: %v", err)
 	}
 }
 

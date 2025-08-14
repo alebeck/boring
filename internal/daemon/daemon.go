@@ -18,97 +18,41 @@ import (
 
 var AlreadyRunning = errors.New("already running")
 
-type state struct {
+type daemon struct {
 	// TODO: write proper concurrent map structure for this
 	tunnels map[string]*tunnel.Tunnel
 	mutex   sync.RWMutex
+	wg      sync.WaitGroup
 }
 
-func newState() *state {
-	return &state{tunnels: make(map[string]*tunnel.Tunnel)}
-}
-
-func Run() {
-	initLogging(logFile)
-	log.Infof("Daemon starting")
-
-	l, err := setupListener()
-	if err != nil {
-		log.Fatalf("Failed to setup listener: %v", err)
-	}
-	log.Infof("Listening on %s", l.Addr())
-
-	go watchSignal(l)
-
-	var wg sync.WaitGroup
-	s := newState()
-	defer cleanup(s, &wg)
-
-	// Handle incoming connections
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			log.Errorf("Failed to accept connection: %v", err)
-			if errors.Is(err, net.ErrClosed) {
-				return
-			}
-			continue
-		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			handleConnection(s, conn)
-		}()
+func newDaemon() *daemon {
+	return &daemon{
+		tunnels: make(map[string]*tunnel.Tunnel),
 	}
 }
 
-func watchSignal(l net.Listener) {
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
-	log.Infof("Received signal: %s. Closing.", <-sig)
-	l.Close()
-}
-
-func cleanup(s *state, wg *sync.WaitGroup) {
-	log.Infof("Cleaning up.")
-	wg.Wait()
-	s.mutex.Lock()
-	for _, t := range s.tunnels {
+func (d *daemon) cleanup() {
+	d.wg.Wait()
+	d.mutex.Lock()
+	for _, t := range d.tunnels {
 		t.Close()
 	}
-	for _, t := range s.tunnels {
+	for _, t := range d.tunnels {
 		<-t.Closed
 	}
 }
 
-func initLogging(path string) {
-	logFile, err := os.OpenFile(
-		path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
-		log.Fatalf("Failed to open log file: %v", err)
+func respond(conn net.Conn, err *error) {
+	resp := Resp{Success: true}
+	if *err != nil {
+		resp = Resp{Success: false, Error: (*err).Error()}
 	}
-	log.Init(logFile, true, runtime.GOOS != "windows")
+	if err := ipc.Send(resp, conn); err != nil {
+		log.Errorf("could not send response: %v", err)
+	}
 }
 
-func setupListener() (l net.Listener, err error) {
-	l, err = net.Listen("unix", sock)
-	if err == nil {
-		return
-	}
-	// If the daemon was terminated forcefully, the domain socket
-	// may be in a bad state where it exists but doesn't allow binding.
-	// We try to identify this and delete the socket file, if necessary.
-	if _, statErr := os.Stat(sock); statErr == nil {
-		if _, dialErr := net.Dial("unix", sock); dialErr != nil {
-			log.Warningf("Found unresponsive socket, deleting...")
-			os.Remove(sock)
-			l, err = net.Listen("unix", sock)
-		}
-	}
-	return
-}
-
-func handleConnection(s *state, conn net.Conn) {
+func (d *daemon) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	// Receive command
@@ -125,66 +69,57 @@ func handleConnection(s *state, conn net.Conn) {
 	// Execute command
 	switch cmd.Kind {
 	case Open:
-		openTunnel(s, conn, &cmd.Tunnel)
+		d.openTunnel(conn, &cmd.Tunnel)
 	case Close:
-		closeTunnel(s, conn, &cmd.Tunnel)
+		d.closeTunnel(conn, &cmd.Tunnel)
 	case List:
-		listTunnels(s, conn)
+		d.listTunnels(conn)
 	default:
-		unknownCmd(conn, cmd.Kind)
+		err := fmt.Errorf("unknown command: %v", cmd.Kind)
+		respond(conn, &err)
 	}
 }
 
-func respond(conn net.Conn, err *error) {
-	resp := Resp{Success: true}
-	if *err != nil {
-		resp = Resp{Success: false, Error: (*err).Error()}
-	}
-	if err := ipc.Send(resp, conn); err != nil {
-		log.Errorf("could not send response: %v", err)
-	}
-}
-
-func openTunnel(s *state, conn net.Conn, d *tunnel.Desc) {
+func (d *daemon) openTunnel(conn net.Conn, desc *tunnel.Desc) {
 	var err error
 	defer respond(conn, &err)
 
-	s.mutex.RLock()
-	_, exists := s.tunnels[d.Name]
-	s.mutex.RUnlock()
+	d.mutex.RLock()
+	_, exists := d.tunnels[desc.Name]
+	d.mutex.RUnlock()
 	if exists {
 		err = AlreadyRunning
-		log.Errorf("%v: could not open: %v", d.Name, err)
+		log.Errorf("%v: could not open: %v", desc.Name, err)
 		return
 	}
 
-	t := tunnel.FromDesc(d)
+	t := tunnel.FromDesc(desc)
 	if err = t.Open(); err != nil {
 		log.Errorf("%v: could not open: %v", t.Name, err)
 		return
 	}
 
-	s.mutex.Lock()
-	s.tunnels[t.Name] = t
-	s.mutex.Unlock()
+	d.mutex.Lock()
+	d.tunnels[t.Name] = t
+	d.mutex.Unlock()
 
 	// Register closing logic
 	go func() {
 		<-t.Closed
-		s.mutex.Lock()
-		delete(s.tunnels, t.Name)
-		s.mutex.Unlock()
+		d.mutex.Lock()
+		delete(d.tunnels, t.Name)
+		d.mutex.Unlock()
 		log.Infof("Closed tunnel %s", t.Name)
 	}()
 }
 
-func closeTunnel(s *state, conn net.Conn, q *tunnel.Desc) {
+func (d *daemon) closeTunnel(conn net.Conn, q *tunnel.Desc) {
 	var err error
 	defer respond(conn, &err)
 
-	s.mutex.RLock()
-	t, ok := s.tunnels[q.Name]
-	s.mutex.RUnlock()
+	d.mutex.RLock()
+	t, ok := d.tunnels[q.Name]
+	d.mutex.RUnlock()
 	if !ok {
 		err = fmt.Errorf("tunnel not running")
 		log.Errorf("%v: could not close tunnel: %v", t.Name, err)
@@ -198,13 +133,13 @@ func closeTunnel(s *state, conn net.Conn, q *tunnel.Desc) {
 	<-t.Closed
 }
 
-func listTunnels(s *state, conn net.Conn) {
-	m := make(map[string]tunnel.Desc)
-	s.mutex.RLock()
-	for n, t := range s.tunnels {
+func (d *daemon) listTunnels(conn net.Conn) {
+	m := make(map[string]tunnel.Desc, len(d.tunnels))
+	d.mutex.RLock()
+	for n, t := range d.tunnels {
 		m[n] = *t.Desc
 	}
-	s.mutex.RUnlock()
+	d.mutex.RUnlock()
 
 	resp := Resp{Success: true, Tunnels: m}
 	if err := ipc.Send(resp, conn); err != nil {
@@ -212,7 +147,73 @@ func listTunnels(s *state, conn net.Conn) {
 	}
 }
 
-func unknownCmd(conn net.Conn, k CmdKind) {
-	err := fmt.Errorf("unknown command: %v", k)
-	respond(conn, &err)
+func initLogging(path string) {
+	logFile, err := os.OpenFile(
+		path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		log.Fatalf("Failed to open log file: %v", err)
+	}
+	log.Init(logFile, true, runtime.GOOS != "windows")
+}
+
+func makeListener() (l net.Listener, err error) {
+	l, err = net.Listen("unix", sock)
+	if err == nil {
+		return
+	}
+	// If the daemon was terminated forcefully, the domain socket
+	// may be in a bad daemon where it exists but doesn't allow binding.
+	// We try to identify this and delete the socket file, if necessary.
+	if _, statErr := os.Stat(sock); statErr == nil {
+		if _, dialErr := net.Dial("unix", sock); dialErr != nil {
+			log.Warningf("Found unresponsive socket, deleting...")
+			os.Remove(sock)
+			l, err = net.Listen("unix", sock)
+		}
+	}
+	return
+}
+
+func closeOnInterrupt(l net.Listener) {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
+	log.Infof("Received signal: %s. Closing.", <-sig)
+	l.Close()
+}
+
+func (d *daemon) run() {
+	l, err := makeListener()
+	if err != nil {
+		log.Fatalf("Failed to setup listener: %v", err)
+	}
+	log.Infof("Listening on %s", l.Addr())
+
+	go closeOnInterrupt(l)
+
+	// Daemon control loop
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			log.Errorf("Failed to accept connection: %v", err)
+			if errors.Is(err, net.ErrClosed) {
+				return
+			}
+			continue
+		}
+		d.wg.Add(1)
+		go func() {
+			defer d.wg.Done()
+			d.handleConnection(conn)
+		}()
+	}
+}
+
+func Run() {
+	initLogging(logFile)
+	log.Infof("Daemon starting")
+
+	d := newDaemon()
+	defer d.cleanup()
+
+	d.run()
 }
