@@ -13,7 +13,6 @@ LDFLAGS := -s -w -X main.version=$(TAG) -X main.commit=$(COMMIT)
 DIST_DIR := ./dist
 COVER_DIR := $(CURDIR)/cover
 COVER_LINES := cover_lines.out
-COVER_OUT := cover.out
 TEST_BINARY := boring.test
 
 .PHONY: test cover
@@ -54,12 +53,11 @@ cover: build-cover
 	@# combine
 	tail -n +2 tmpfile >> $(COVER_LINES)
 	rm -f tmpfile
-	go tool cover -func=$(COVER_LINES) -o $(COVER_OUT)
 	@# output total coverage
-	cat $(COVER_OUT) | grep total
+	go tool cover -func=$(COVER_LINES) | grep total
 
 cover-html: cover
 	go tool cover -html=$(COVER_LINES)
 
 clean:
-	rm -rf $(DIST_DIR) $(TEST_BINARY) $(COVER_DIR) $(COVER_LINES) $(COVER_OUT)
+	rm -rf $(DIST_DIR) $(TEST_BINARY) $(COVER_DIR) $(COVER_LINES)

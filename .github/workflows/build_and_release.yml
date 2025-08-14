@@ -4,21 +4,23 @@ on:
   push:
     tags:
       - "*"
+  workflow_dispatch:
 
 jobs:
-  build:
+  build-and-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
         with:
           go-version: 1.23
+
       - name: Build
-        run: ./build_grid.sh 
+        run: make build-grid
+
       - name: Release
         uses: svenstaro/upload-release-action@v2
         with:

@@ -97,10 +97,10 @@ Get one of the pre-built binaries from the [releases page](https://github.com/al
 
 ```sh
 git clone https://github.com/alebeck/boring && cd boring
-./build.sh
+make
 ```
 
-Then move the binary to a location in your `$PATH`.
+Then move the binary in `dist` to a location in your `$PATH`.
 
 <details>
   <summary>Note for Windows users</summary>
