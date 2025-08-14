@@ -12,7 +12,8 @@ LDFLAGS := -s -w -X main.version=$(TAG) -X main.commit=$(COMMIT)
 
 DIST_DIR := ./dist
 COVER_DIR := $(CURDIR)/cover
-COVER_TXT := cover.txt
+COVER_LINES := cover_lines.out
+COVER_OUT := cover.out
 TEST_BINARY := boring.test
 
 .PHONY: test cover
@@ -46,17 +47,19 @@ cover: build-cover
 	@# e2e tests
 	rm -rf $(COVER_DIR) && mkdir -p $(COVER_DIR)
 	GOCOVERDIR=$(COVER_DIR) go test  ./test/e2e
-	go tool covdata textfmt -i=$(COVER_DIR) -o $(COVER_TXT)
+	go tool covdata textfmt -i=$(COVER_DIR) -o $(COVER_LINES)
 	@# unit tests
 	tmpfile=$(mktemp)
 	go test -coverprofile=tmpfile ./internal/... > /dev/null
-	tail -n +2 tmpfile >> $(COVER_TXT)
+	@# combine
+	tail -n +2 tmpfile >> $(COVER_LINES)
 	rm -f tmpfile
+	go tool cover -func=$(COVER_LINES) -o $(COVER_OUT)
 	@# output total coverage
-	go tool cover -func=$(COVER_TXT) | grep total
+	cat $(COVER_OUT) | grep total
 
 cover-html: cover
-	go tool cover -html=$(COVER_TXT)
+	go tool cover -html=$(COVER_LINES)
 
 clean:
-	rm -rf $(DIST_DIR) $(TEST_BINARY) $(COVER_DIR) $(COVER_TXT)
+	rm -rf $(DIST_DIR) $(TEST_BINARY) $(COVER_DIR) $(COVER_LINES) $(COVER_OUT)
