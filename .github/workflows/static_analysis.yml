@@ -1,0 +1,36 @@
+name: Static Analysis
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.23
+
+      - name: Install lint tools
+        run: |
+          go install golang.org/x/lint/golint@latest
+          go install github.com/gordonklaus/ineffassign@latest
+          go install github.com/client9/misspell/cmd/misspell@latest
+
+      - name: Check gofmt
+        run: test -z "$(gofmt -l .)" || (echo "Code is not gofmt'ed" && exit 1)
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run golint
+        run: golint ./... | tee lint.out && test ! -s lint.out
+
+      - name: Run ineffassign
+        run: ineffassign .
+
+      - name: Run misspell
+        run: misspell -error .
