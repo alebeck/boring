@@ -180,7 +180,7 @@ func listenAndForward(c *ssh.ServerConn, req tcpipForwardRequest) {
 
 	l, err := net.Listen("tcp", fmt.Sprintf("%s:%d", req.Addr, req.Port))
 	if err != nil {
-		fmt.Errorf("failed to listen on %s:%d: %v\n", req.Addr, req.Port, err)
+		fmt.Printf("failed to listen on %s:%d: %v\n", req.Addr, req.Port, err)
 		return
 	}
 	defer l.Close()
@@ -194,7 +194,7 @@ func listenAndForward(c *ssh.ServerConn, req tcpipForwardRequest) {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			fmt.Errorf("failed to accept connection: %v\n", err)
+			fmt.Printf("failed to accept connection: %v\n", err)
 			return
 		}
 		go func() {
@@ -216,14 +216,14 @@ func handleForwardedConnection(channel ssh.Channel, extra []byte) {
 
 	var payload forwardedTCPPayload
 	if err := ssh.Unmarshal(extra, &payload); err != nil {
-		fmt.Errorf("failed to unmarshal forwarded-tcpip payload: %v\n", err)
+		fmt.Printf("failed to unmarshal forwarded-tcpip payload: %v\n", err)
 		return
 	}
 	addr := fmt.Sprintf("%s:%d", payload.Addr, payload.Port)
 
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
-		fmt.Errorf("failed to connect to %s: %v\n", addr, err)
+		fmt.Printf("failed to connect to %s: %v\n", addr, err)
 		return
 	}
 	defer conn.Close()
