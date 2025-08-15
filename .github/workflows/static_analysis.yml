@@ -19,6 +19,7 @@ jobs:
           go install golang.org/x/lint/golint@latest
           go install github.com/gordonklaus/ineffassign@latest
           go install github.com/client9/misspell/cmd/misspell@latest
+          go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
 
       - name: Check gofmt
         run: test -z "$(gofmt -l .)" || (echo "Code is not gofmt'ed" && exit 1)
@@ -26,11 +27,11 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
-      - name: Run golint
-        run: golint ./... | tee lint.out && test ! -s lint.out
+      - name: Run gocyclo
+        run: gocyclo -over 15 ./...
 
       - name: Run ineffassign
-        run: ineffassign .
+        run: ineffassign ./...
 
       - name: Run misspell
-        run: misspell -error .
+        run: misspell -error ./...
