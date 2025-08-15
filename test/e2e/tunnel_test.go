@@ -117,7 +117,7 @@ func TestOpenAlreadyRunning(t *testing.T) {
 	}
 	defer cancel()
 
-	c, out, err := cliCommand(env, "open", "test")
+	c, _, err := cliCommand(env, "open", "test")
 	if err != nil {
 		t.Fatalf("failed to run CLI command: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestOpenAlreadyRunning(t *testing.T) {
 		t.Fatalf("exit code %d, should be 0", c)
 	}
 
-	c, out, err = cliCommand(env, "open", "test")
+	c, out, err := cliCommand(env, "open", "test")
 	if err != nil {
 		t.Fatalf("failed to run CLI command: %v", err)
 	}
