@@ -122,33 +122,24 @@ func TestReadPassword(t *testing.T) {
 		}
 	}()
 
-	addr := fmt.Sprintf("localhost:%d", socks5ln.Addr().(*net.TCPAddr).Port)
-
-	if d, err := xproxy.SOCKS5("tcp", addr, nil, xproxy.Direct); err != nil {
-		t.Fatal(err)
-	} else {
-		if _, err := d.Dial("tcp", addr); err == nil {
-			t.Fatal("expected no-auth dial error")
+	expectDialErr := func(addr string, auth *xproxy.Auth) {
+		if d, err := xproxy.SOCKS5("tcp", addr, auth, xproxy.Direct); err != nil {
+			t.Fatal(err)
+		} else {
+			if _, err := d.Dial("tcp", addr); err == nil {
+				t.Fatal("expected dial error")
+			}
 		}
 	}
+
+	addr := fmt.Sprintf("localhost:%d", socks5ln.Addr().(*net.TCPAddr).Port)
+	expectDialErr(addr, nil)
 
 	badPwd := &xproxy.Auth{User: "foo", Password: "not right"}
-	if d, err := xproxy.SOCKS5("tcp", addr, badPwd, xproxy.Direct); err != nil {
-		t.Fatal(err)
-	} else {
-		if _, err := d.Dial("tcp", addr); err == nil {
-			t.Fatal("expected bad password dial error")
-		}
-	}
+	expectDialErr(addr, badPwd)
 
 	badUsr := &xproxy.Auth{User: "not right", Password: "bar"}
-	if d, err := xproxy.SOCKS5("tcp", addr, badUsr, xproxy.Direct); err != nil {
-		t.Fatal(err)
-	} else {
-		if _, err := d.Dial("tcp", addr); err == nil {
-			t.Fatal("expected bad username dial error")
-		}
-	}
+	expectDialErr(addr, badUsr)
 
 	socksDialer, err := xproxy.SOCKS5("tcp", addr, auth, xproxy.Direct)
 	if err != nil {
@@ -172,6 +163,50 @@ func TestReadPassword(t *testing.T) {
 	if err := conn.Close(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func newUdpAssociateConn(t *testing.T, port int) (socks5Conn net.Conn, socks5UDPAddr socksAddr) {
+	// net/proxy don't support UDP, so we need to manually send the SOCKS5 UDP request
+	conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = conn.Write([]byte{socks5Version, 0x01, noAuthRequired}) // client hello with no auth
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 1024)
+	n, err := conn.Read(buf) // server hello
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 || buf[0] != socks5Version || buf[1] != noAuthRequired {
+		t.Fatalf("got: %q want: 0x05 0x00", buf[:n])
+	}
+
+	targetAddr := socksAddr{addrType: ipv4, addr: "0.0.0.0", port: 0}
+	targetAddrPkt, err := targetAddr.marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = conn.Write(append([]byte{socks5Version, byte(udpAssociate), 0x00}, targetAddrPkt...)) // client reqeust
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	n, err = conn.Read(buf) // server response
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n < 3 || !bytes.Equal(buf[:3], []byte{socks5Version, 0x00, 0x00}) {
+		t.Fatalf("got: %q want: 0x05 0x00 0x00", buf[:n])
+	}
+	udpProxySocksAddr, err := parseSocksAddr(bytes.NewReader(buf[3:n]))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return conn, udpProxySocksAddr
 }
 
 func TestUDP(t *testing.T) {
@@ -205,51 +240,7 @@ func TestUDP(t *testing.T) {
 	go socks5Server(socks5)
 
 	// make a socks5 udpAssociate conn
-	newUdpAssociateConn := func() (socks5Conn net.Conn, socks5UDPAddr socksAddr) {
-		// net/proxy don't support UDP, so we need to manually send the SOCKS5 UDP request
-		conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", socks5Port))
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = conn.Write([]byte{socks5Version, 0x01, noAuthRequired}) // client hello with no auth
-		if err != nil {
-			t.Fatal(err)
-		}
-		buf := make([]byte, 1024)
-		n, err := conn.Read(buf) // server hello
-		if err != nil {
-			t.Fatal(err)
-		}
-		if n != 2 || buf[0] != socks5Version || buf[1] != noAuthRequired {
-			t.Fatalf("got: %q want: 0x05 0x00", buf[:n])
-		}
-
-		targetAddr := socksAddr{addrType: ipv4, addr: "0.0.0.0", port: 0}
-		targetAddrPkt, err := targetAddr.marshal()
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = conn.Write(append([]byte{socks5Version, byte(udpAssociate), 0x00}, targetAddrPkt...)) // client reqeust
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		n, err = conn.Read(buf) // server response
-		if err != nil {
-			t.Fatal(err)
-		}
-		if n < 3 || !bytes.Equal(buf[:3], []byte{socks5Version, 0x00, 0x00}) {
-			t.Fatalf("got: %q want: 0x05 0x00 0x00", buf[:n])
-		}
-		udpProxySocksAddr, err := parseSocksAddr(bytes.NewReader(buf[3:n]))
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		return conn, udpProxySocksAddr
-	}
-
-	conn, udpProxySocksAddr := newUdpAssociateConn()
+	conn, udpProxySocksAddr := newUdpAssociateConn(t, socks5Port)
 	defer conn.Close()
 
 	sendUDPAndWaitResponse := func(socks5UDPConn net.Conn, addr socksAddr, body []byte) (responseBody []byte) {
@@ -284,7 +275,7 @@ func TestUDP(t *testing.T) {
 	}
 	defer socks5UDPConn.Close()
 
-	for i := 0; i < echoServerNumber; i++ {
+	for i := 0; i < len(echoServerListener); i++ {
 		port := echoServerListener[i].LocalAddr().(*net.UDPAddr).Port
 		addr := socksAddr{addrType: ipv4, addr: "127.0.0.1", port: uint16(port)}
 		requestBody := []byte(fmt.Sprintf("Test %d", i))

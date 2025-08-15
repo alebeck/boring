@@ -83,17 +83,7 @@ func controlTunnels(args []string, kind daemon.CmdKind) {
 	}
 
 	// Filter tunnels based on patterns
-	keep := make(map[string]bool, len(tunnels))
-	var notMatched []string
-	for _, pat := range args {
-		n, err := filterGlob(tunnels, keep, pat)
-		if err != nil {
-			log.Fatalf("Malformed glob pattern '%v'.", pat)
-		}
-		if n == 0 {
-			notMatched = append(notMatched, pat)
-		}
-	}
+	keep, notMatched := filterTunnels(tunnels, args)
 
 	var m string
 	if kind == daemon.Close {
@@ -245,6 +235,21 @@ func transmitCmd(cmd daemon.Cmd, resp any) error {
 	}
 
 	return nil
+}
+
+func filterTunnels(ts map[string]*tunnel.Desc, pats []string) (map[string]bool, []string) {
+	keep := make(map[string]bool, len(ts))
+	var notMatched []string
+	for _, pat := range pats {
+		n, err := filterGlob(ts, keep, pat)
+		if err != nil {
+			log.Fatalf("Malformed glob pattern '%v'.", pat)
+		}
+		if n == 0 {
+			notMatched = append(notMatched, pat)
+		}
+	}
+	return keep, notMatched
 }
 
 func filterGlob(
