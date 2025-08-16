@@ -226,11 +226,11 @@ func transmitCmd(cmd daemon.Cmd, resp any) error {
 	}
 	defer conn.Close()
 
-	if err := ipc.Send(cmd, conn); err != nil {
+	if err := ipc.Write(cmd, conn); err != nil {
 		return fmt.Errorf("could not send command: %v", err)
 	}
 
-	if err = ipc.Receive(resp, conn); err != nil {
+	if err = ipc.Read(resp, conn); err != nil {
 		return fmt.Errorf("could not receive response: %v", err)
 	}
 

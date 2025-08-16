@@ -4,30 +4,30 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"net"
+	"io"
 
 	"github.com/alebeck/boring/internal/log"
 )
 
-func Send(s any, conn net.Conn) error {
+func Write(s any, w io.Writer) error {
 	data, err := json.Marshal(s)
 	if err != nil {
 		return fmt.Errorf("failed to serialize: %v", err)
 	}
 	log.Debugf("Sending: %v", string(data))
 
-	_, err = conn.Write(append(data, '\n'))
+	_, err = w.Write(append(data, '\n'))
 	if err != nil {
-		return fmt.Errorf("failed to send: %v", err)
+		return fmt.Errorf("failed to write: %v", err)
 	}
 	return nil
 }
 
-func Receive(s any, conn net.Conn) error {
-	reader := bufio.NewReader(conn)
-	data, err := reader.ReadBytes('\n')
+func Read(s any, r io.Reader) error {
+	br := bufio.NewReader(r)
+	data, err := br.ReadBytes('\n')
 	if err != nil {
-		return fmt.Errorf("failed to read from connection: %w", err)
+		return fmt.Errorf("failed to read: %w", err)
 	}
 	log.Debugf("Received: %v", string(data))
 

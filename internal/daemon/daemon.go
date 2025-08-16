@@ -47,7 +47,7 @@ func respond(conn net.Conn, err *error) {
 	if *err != nil {
 		resp = Resp{Success: false, Error: (*err).Error()}
 	}
-	if err := ipc.Send(resp, conn); err != nil {
+	if err := ipc.Write(resp, conn); err != nil {
 		log.Errorf("could not send response: %v", err)
 	}
 }
@@ -55,9 +55,9 @@ func respond(conn net.Conn, err *error) {
 func (d *daemon) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
-	// Receive command
+	// Read command
 	var cmd Cmd
-	if err := ipc.Receive(&cmd, conn); err != nil {
+	if err := ipc.Read(&cmd, conn); err != nil {
 		// Ignore cases where client aborts connection
 		if !errors.Is(err, io.EOF) {
 			log.Errorf("Could not receive command: %v", err)
@@ -142,7 +142,7 @@ func (d *daemon) listTunnels(conn net.Conn) {
 	d.mutex.RUnlock()
 
 	resp := Resp{Success: true, Tunnels: m}
-	if err := ipc.Send(resp, conn); err != nil {
+	if err := ipc.Write(resp, conn); err != nil {
 		log.Errorf("could not send response: %v", err)
 	}
 }
