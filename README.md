@@ -11,6 +11,8 @@ A simple command line SSH tunnel manager that just works
 [![Go Report Card](https://goreportcard.com/badge/github.com/alebeck/boring)](https://goreportcard.com/report/github.com/alebeck/boring)
 ![Static Badge](https://img.shields.io/badge/license-MIT-blue?)
 
+Get it: `brew install boring`
+
 </div>
 
 ## Demo
@@ -20,10 +22,12 @@ A simple command line SSH tunnel manager that just works
 
 * Ultra lightweight and fast
 * Local, remote and dynamic (SOCKS5) port forwarding
-* Compatible with SSH config and `ssh-agent`
+* Works with SSH config and `ssh-agent`
 * Supports Unix sockets
 * Automatic reconnection and keep-alives
-* Human-friendly configuration via TOML
+* Human-friendly TOML configuration
+* Cross-platform support
+* Smart shell completions
 
 ## Usage
 
