@@ -2,12 +2,13 @@ package e2e
 
 import (
 	"fmt"
-	"golang.org/x/crypto/ssh"
 	"io"
 	"net"
 	"os"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 )
 
 const (
