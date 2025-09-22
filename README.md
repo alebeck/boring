@@ -24,7 +24,7 @@ Get it: `brew install boring`
 * Local, remote and dynamic (SOCKS5) port forwarding
 * Works with SSH config and `ssh-agent`
 * Supports Unix sockets
-* Automatic reconnection and keep-alives
+* Automatic re-connection and keep-alives
 * Human-friendly TOML configuration
 * Cross-platform support
 * Smart shell completions
