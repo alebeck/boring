@@ -122,7 +122,7 @@ func (d *daemon) closeTunnel(conn net.Conn, q *tunnel.Desc) {
 	d.mutex.RUnlock()
 	if !ok {
 		err = fmt.Errorf("tunnel not running")
-		log.Errorf("%v: could not close tunnel: %v", t.Name, err)
+		log.Errorf("%v: could not close tunnel: %v", q.Name, err)
 		return
 	}
 
@@ -134,8 +134,8 @@ func (d *daemon) closeTunnel(conn net.Conn, q *tunnel.Desc) {
 }
 
 func (d *daemon) listTunnels(conn net.Conn) {
-	m := make(map[string]tunnel.Desc, len(d.tunnels))
 	d.mutex.RLock()
+	m := make(map[string]tunnel.Desc, len(d.tunnels))
 	for n, t := range d.tunnels {
 		m[n] = *t.Desc
 	}

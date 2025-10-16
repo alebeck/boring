@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"fmt"
-	"golang.org/x/sync/errgroup"
 	"log"
 	"net"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	xproxy "golang.org/x/net/proxy"
+	"golang.org/x/sync/errgroup"
 )
 
 var server *sshServer
@@ -53,6 +53,33 @@ func TestList(t *testing.T) {
 	if !(reflect.DeepEqual(strings.Fields(lines[1]),
 		[]string{"closed", "test", "49711", "->", "localhost:49712", "127.0.0.1"})) {
 		t.Errorf("test tunnel not in list output: %s", out)
+	}
+}
+
+func TestListNoTunnels(t *testing.T) {
+	cfg := defaultConfig
+	cfg.boringConfig = t.TempDir() + "/config.toml"
+	f, err := os.Create(cfg.boringConfig)
+	if err != nil {
+		t.Fatalf("could not create config file: %v", err)
+	}
+	f.Close()
+
+	env, cancel, err := makeEnvWithDaemon(cfg, t)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	defer cancel()
+
+	c, out, err := cliCommand(env, "list")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 0 {
+		t.Fatalf("exit code %d: %s", c, out)
+	}
+	if !strings.Contains(out, "No tunnels configured.") {
+		t.Fatalf("did not get expected output: %v", out)
 	}
 }
 
@@ -408,7 +435,7 @@ func TestTunnelLocal(t *testing.T) {
 }
 
 // Test handling of multiple simultaneous connections
-func TestTunnelMulti(t *testing.T) {
+func TestTunnelMultiConns(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
 		t.Fatalf(err.Error())
@@ -448,6 +475,30 @@ func TestTunnelMulti(t *testing.T) {
 	if err := eg.Wait(); err != nil {
 		t.Fatalf("error in concurrent connections: %v", err)
 	}
+}
+
+func TestTunnelMultiTunnels(t *testing.T) {
+	env, cancel, err := makeDefaultEnvWithDaemon(t)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	defer cancel()
+
+	c, out, err := cliCommand(env, "open", "test", "test2")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 0 {
+		t.Fatalf("exit code %d: %s", c, out)
+	}
+	out = stripANSI(out)
+	if !strings.Contains(strings.ToLower(out), "opened tunnel 'test'") ||
+		!strings.Contains(strings.ToLower(out), "opened tunnel 'test2'") {
+		t.Errorf("output did not indicate success: %s", out)
+	}
+
+	testTunnel(t, "localhost:49711", "localhost:49712")
+	testTunnel(t, "localhost:49713", "localhost:49714")
 }
 
 // Test a reverse connection

@@ -49,7 +49,7 @@ cover: build-cover
 	go tool covdata textfmt -i=$(COVER_DIR) -o $(COVER_LINES)
 	@# unit tests
 	tmpfile=$(mktemp)
-	go test -coverprofile=tmpfile ./internal/... > /dev/null
+	go test -coverprofile=tmpfile ./cmd/... ./internal/... > /dev/null
 	@# combine
 	tail -n +2 tmpfile >> $(COVER_LINES)
 	rm -f tmpfile
