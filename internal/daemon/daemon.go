@@ -122,7 +122,7 @@ func (d *daemon) closeTunnel(conn net.Conn, q *tunnel.Desc) {
 	d.mutex.RUnlock()
 	if !ok {
 		err = fmt.Errorf("tunnel not running")
-		log.Errorf("%v: could not close tunnel: %v", t.Name, err)
+		log.Errorf("%v: could not close tunnel: %v", q.Name, err)
 		return
 	}
 
