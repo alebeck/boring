@@ -8,7 +8,9 @@
 
 TAG := $(shell git describe --tags --exact-match 2>/dev/null)
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null)
-LDFLAGS := -s -w -X main.version=$(TAG) -X main.commit=$(COMMIT)
+MOD := $(shell go list -m)
+LDFLAGS := -s -w -X $(MOD)/internal/buildinfo.Tag=$(TAG) \
+	-X $(MOD)/internal/buildinfo.Commit=$(COMMIT)
 
 DIST_DIR := ./dist
 COVER_DIR := $(CURDIR)/cover

@@ -1,6 +1,6 @@
-//go:build linux || darwin
+//go:build windows
 
-package daemon
+package main
 
 import (
 	"os/exec"
@@ -9,9 +9,14 @@ import (
 	"github.com/alebeck/boring/internal/log"
 )
 
-func runDaemonized(name string, arg ...string) error {
+const DETACHED_PROCESS = 0x00000008
+
+func launchDaemonOS(name string, arg ...string) error {
 	cmd := exec.Command(name, arg...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS,
+	}
+
 	if err := cmd.Start(); err != nil {
 		return err
 	}

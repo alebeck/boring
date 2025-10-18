@@ -3,7 +3,6 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"github.com/alebeck/boring/internal/daemon"
 	"net"
 	"os"
 	"os/exec"
@@ -13,6 +12,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/alebeck/boring/internal/daemon"
 )
 
 const (
@@ -24,19 +25,23 @@ const (
 var testMsg = []byte("hello through tunnel")
 
 type config struct {
-	boringConfig string
-	sshConfig    string
-	noSpawn      bool
-	debug        bool
-	useAgent     bool
+	boringConfig   string
+	sshConfig      string
+	commitOverride string
+	tagOverride    string
+	noSpawn        bool
+	debug          bool
+	useAgent       bool
 }
 
 var defaultConfig = config{
-	boringConfig: "../testdata/config/config.toml",
-	sshConfig:    "../testdata/config/ssh_config",
-	noSpawn:      true,
-	debug:        false,
-	useAgent:     false,
+	boringConfig:   "../testdata/config/config.toml",
+	sshConfig:      "../testdata/config/ssh_config",
+	commitOverride: "00000",
+	tagOverride:    "v0.0.0",
+	noSpawn:        true,
+	debug:          false,
+	useAgent:       false,
 }
 
 func makeEnv(c config, t *testing.T) ([]string, error) {
@@ -53,6 +58,8 @@ func makeEnv(c config, t *testing.T) ([]string, error) {
 		"BORING_SOCK="+sockFile,
 		"BORING_FORCE_INTERACTIVE=1",
 		"BORING_SSH_CONFIG="+c.sshConfig,
+		"BORING_COMMIT_OVERRIDE="+c.commitOverride,
+		"BORING_TAG_OVERRIDE="+c.tagOverride,
 	)
 
 	if c.noSpawn {
@@ -85,6 +92,16 @@ func getEnv(env []string, key string) (val string) {
 	return
 }
 
+func setEnv(env []string, key, value string) []string {
+	for i, e := range env {
+		if strings.HasPrefix(e, key+"=") {
+			env[i] = key + "=" + value
+			return env
+		}
+	}
+	return append(env, key+"="+value)
+}
+
 func daemonWithCancel(env []string) (context.CancelFunc, error) {
 	cmd := exec.Command(binary, daemon.Flag)
 	cmd.Env = env
@@ -92,6 +109,11 @@ func daemonWithCancel(env []string) (context.CancelFunc, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
+
+	// Prevent zombie processes
+	go func() {
+		cmd.Wait()
+	}()
 
 	cancel := func() {
 		cmd.Process.Signal(syscall.SIGTERM)
@@ -107,7 +129,7 @@ func daemonWithCancel(env []string) (context.CancelFunc, error) {
 	for {
 		select {
 		case <-timeout:
-			return nil, fmt.Errorf("deamon not responsive after timeout")
+			return nil, fmt.Errorf("daemon not responsive after timeout")
 		case <-wait.C:
 			if conn, err := net.Dial("unix", sock); err == nil {
 				conn.Close()

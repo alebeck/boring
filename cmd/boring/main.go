@@ -6,6 +6,7 @@ import (
 	"runtime"
 
 	"github.com/alebeck/boring/completions"
+	"github.com/alebeck/boring/internal/buildinfo"
 	"github.com/alebeck/boring/internal/daemon"
 	"github.com/alebeck/boring/internal/log"
 	"golang.org/x/term"
@@ -13,8 +14,6 @@ import (
 
 var isTerm = os.Getenv("BORING_FORCE_INTERACTIVE") != "" ||
 	term.IsTerminal(int(os.Stdout.Fd()))
-
-var version, commit string
 
 func main() {
 	// Run in daemon mode?
@@ -82,14 +81,14 @@ func initLogging() {
 }
 
 func printVersion() {
-	v := version
-	if v == "" {
-		v = "snapshot"
-		if commit != "" {
-			v += fmt.Sprintf(" (#%s)", commit)
+	t := buildinfo.Tag
+	if t == "" {
+		t = "snapshot"
+		if buildinfo.Commit != "" {
+			t += fmt.Sprintf(" (#%s)", buildinfo.Commit)
 		}
 	}
-	log.Emitf("boring %s\n", v)
+	log.Emitf("boring %s\n", t)
 }
 
 func printUsage() {

@@ -36,7 +36,7 @@ func killPID(pid int) error {
 	return proc.Signal(syscall.SIGTERM)
 }
 
-func testDaemonLaunch(t *testing.T, env []string) {
+func testDaemonLaunch(t *testing.T, env []string) string {
 	c, out, err := cliCommand(env, "list")
 	if err != nil {
 		t.Fatalf("failed to run CLI command: %v", err)
@@ -76,6 +76,8 @@ func testDaemonLaunch(t *testing.T, env []string) {
 	if _, err = os.Stat(sock); err == nil {
 		t.Fatalf("sock file exists after termination: %v", err)
 	}
+
+	return out
 }
 
 // Test that daemon is correctly started if not running
@@ -102,12 +104,7 @@ func TestDaemonLaunchBadSocket(t *testing.T) {
 	}
 
 	// Create non-bindable file
-	var s string
-	for _, e := range env {
-		if strings.HasPrefix(e, "BORING_SOCK=") {
-			s = strings.Split(e, "=")[1]
-		}
-	}
+	s := getEnv(env, "BORING_SOCK")
 	if err = os.WriteFile(s, []byte("test"), 111); err != nil {
 		t.Fatalf("could not create socket file: %v", err)
 	}
@@ -176,6 +173,45 @@ func TestDaemonInvalidTunnel(t *testing.T) {
 	}
 }
 
-func TestDaemonFailSetupListener(t *testing.T) {
-	// TODO
+// Test that the CLI will respawn a new daemon when it detects a non-matching version
+func TestDaemonLaunchMismatch(t *testing.T) {
+	cfg := defaultConfig
+	cfg.noSpawn = false
+	cfg.debug = true
+
+	env, cancel, err := makeEnvWithDaemon(cfg, t)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	defer cancel()
+
+	setEnv(env, "BORING_COMMIT_OVERRIDE", "11111")
+
+	out := testDaemonLaunch(t, env)
+
+	if !strings.Contains(stripANSI(out), "Detected daemon build #00000 (CLI: #11111)") {
+		t.Fatalf("expected incompatibility error, got: %s", out)
+	}
+}
+
+// Test the output in case the daemon didn't send a version
+func TestDaemonLaunchMismatch2(t *testing.T) {
+	cfg := defaultConfig
+	cfg.noSpawn = false
+	cfg.debug = true
+	cfg.commitOverride = ""
+
+	env, cancel, err := makeEnvWithDaemon(cfg, t)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	defer cancel()
+
+	setEnv(env, "BORING_COMMIT_OVERRIDE", "11111")
+
+	out := testDaemonLaunch(t, env)
+
+	if !strings.Contains(stripANSI(out), "Detected unknown daemon build (CLI: #11111)") {
+		t.Fatalf("expected incompatibility error, got: %s", out)
+	}
 }

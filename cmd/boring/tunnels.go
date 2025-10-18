@@ -12,14 +12,13 @@ import (
 
 	"github.com/alebeck/boring/internal/config"
 	"github.com/alebeck/boring/internal/daemon"
-	"github.com/alebeck/boring/internal/ipc"
 	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/table"
 	"github.com/alebeck/boring/internal/tunnel"
 	"golang.org/x/sync/errgroup"
 )
 
-const daemonTimeout = 2 * time.Second
+const daemonTimeout = 10 * time.Second
 
 var errOpFailed = errors.New("operation failed")
 
@@ -48,8 +47,8 @@ func prepare() (*config.Config, error) {
 	})
 
 	g.Go(func() error {
-		if err := daemon.Ensure(ctx); err != nil {
-			return fmt.Errorf("could not start daemon: %v", err)
+		if err := ensureDaemon(ctx); err != nil {
+			return err
 		}
 		return nil
 	})
@@ -70,7 +69,7 @@ func controlTunnels(args []string, kind daemon.CmdKind) {
 
 	conf, err := prepare()
 	if err != nil {
-		log.Fatalf("%s", err.Error())
+		log.Fatalf("Startup: %s", err.Error())
 	}
 
 	// Get available tunnels for requested command
@@ -123,13 +122,11 @@ func controlTunnels(args []string, kind daemon.CmdKind) {
 }
 
 func openTunnel(t *tunnel.Desc) error {
-	var resp daemon.Resp
-	cmd := daemon.Cmd{Kind: daemon.Open, Tunnel: *t}
-	if err := transmitCmd(cmd, &resp); err != nil {
+	resp, err := sendCmd(daemon.Cmd{Kind: daemon.Open, Tunnel: *t})
+	if err != nil {
 		log.Errorf("Could not transmit 'open' command: %v", err)
 		return errOpFailed
 	}
-
 	if !resp.Success {
 		// cannot use errors.Is because error is transmitted as string over IPC
 		if strings.HasSuffix(resp.Error, daemon.AlreadyRunning.Error()) {
@@ -148,14 +145,11 @@ func openTunnel(t *tunnel.Desc) error {
 func closeTunnel(t *tunnel.Desc) error {
 	// Daemon only needs the name, so simplify
 	t = &tunnel.Desc{Name: t.Name}
-
-	var resp daemon.Resp
-	cmd := daemon.Cmd{Kind: daemon.Close, Tunnel: *t}
-	if err := transmitCmd(cmd, &resp); err != nil {
+	resp, err := sendCmd(daemon.Cmd{Kind: daemon.Close, Tunnel: *t})
+	if err != nil {
 		log.Errorf("Could not transmit 'close' command: %v", err)
 		return errOpFailed
 	}
-
 	if !resp.Success {
 		log.Errorf("Tunnel '%v' could not be closed: %v", t.Name, resp.Error)
 		return errOpFailed
@@ -165,9 +159,8 @@ func closeTunnel(t *tunnel.Desc) error {
 }
 
 func getRunningTunnels() (map[string]*tunnel.Desc, error) {
-	var resp daemon.Resp
-	cmd := daemon.Cmd{Kind: daemon.List}
-	if err := transmitCmd(cmd, &resp); err != nil {
+	resp, err := sendCmd(daemon.Cmd{Kind: daemon.List})
+	if err != nil {
 		return nil, err
 	}
 	if !resp.Success {
@@ -183,7 +176,7 @@ func getRunningTunnels() (map[string]*tunnel.Desc, error) {
 func listTunnels() {
 	conf, err := prepare()
 	if err != nil {
-		log.Fatalf("%s", err.Error())
+		log.Fatalf("Startup: %s", err.Error())
 	}
 
 	ts, err := getRunningTunnels()
@@ -217,24 +210,6 @@ func listTunnels() {
 	}
 
 	log.Emitf("%v", tbl)
-}
-
-func transmitCmd(cmd daemon.Cmd, resp any) error {
-	conn, err := daemon.Connect()
-	if err != nil {
-		return fmt.Errorf("could not connect to daemon: %v", err)
-	}
-	defer conn.Close()
-
-	if err := ipc.Write(cmd, conn); err != nil {
-		return fmt.Errorf("could not send command: %v", err)
-	}
-
-	if err = ipc.Read(resp, conn); err != nil {
-		return fmt.Errorf("could not receive response: %v", err)
-	}
-
-	return nil
 }
 
 func filterTunnels(ts map[string]*tunnel.Desc, pats []string) (map[string]bool, []string) {
