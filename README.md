@@ -7,7 +7,7 @@
 A simple command line SSH tunnel manager that just works
 
 [![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/alebeck/boring/test_and_cover.yml?branch=main&style=flat&logo=github&label=CI)](https://github.com/alebeck/boring/actions/workflows/test_and_cover.yml)
-![GitHub Release](https://img.shields.io/github/v/release/alebeck/boring?color=orange)
+[![GitHub Release](https://img.shields.io/github/v/release/alebeck/boring?color=orange)](https://github.com/alebeck/boring/releases/latest)
 [![Go Report Card](https://goreportcard.com/badge/github.com/alebeck/boring)](https://goreportcard.com/report/github.com/alebeck/boring)
 ![Static Badge](https://img.shields.io/badge/license-MIT-blue?)
 
@@ -24,7 +24,7 @@ Get it: `brew install boring`
 * Local, remote and dynamic (SOCKS5) port forwarding
 * Works with SSH config and `ssh-agent`
 * Supports Unix sockets
-* Automatic reconnection and keep-alives
+* Automatic re-connection and keep-alives
 * Human-friendly TOML configuration
 * Cross-platform support
 * Smart shell completions
