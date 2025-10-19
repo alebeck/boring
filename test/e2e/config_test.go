@@ -12,7 +12,7 @@ func TestConfigCreate(t *testing.T) {
 
 	env, err := makeEnv(cfg, t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 
 	_, out, err := cliCommand(env, "list")
@@ -35,7 +35,7 @@ func TestEdit(t *testing.T) {
 	cfg := defaultConfig
 	env, err := makeEnv(cfg, t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 
 	tmpEditor := t.TempDir() + "/boring-editor.sh"
@@ -62,7 +62,7 @@ func testInvalidConfig(t *testing.T, cfgPath string) {
 	cfg.boringConfig = cfgPath
 	env, cancel, err := makeEnvWithDaemon(cfg, t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 

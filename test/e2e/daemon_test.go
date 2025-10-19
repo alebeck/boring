@@ -87,7 +87,7 @@ func TestDaemonLaunch(t *testing.T) {
 	cfg.debug = true
 	env, err := makeEnv(cfg, t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	testDaemonLaunch(t, env)
 }
@@ -100,7 +100,7 @@ func TestDaemonLaunchBadSocket(t *testing.T) {
 	cfg.debug = true
 	env, err := makeEnv(cfg, t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 
 	// Create non-bindable file
@@ -115,7 +115,7 @@ func TestDaemonLaunchBadSocket(t *testing.T) {
 func TestDaemonInvalidCommand(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -130,11 +130,11 @@ func TestDaemonInvalidCommand(t *testing.T) {
 	defer conn.Close()
 
 	if err = ipc.Write(cmd, conn); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	var r daemon.Resp
 	if err = ipc.Read(&r, conn); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 
 	if r.Success || !strings.Contains(r.Error, "unknown command") {
@@ -145,7 +145,7 @@ func TestDaemonInvalidCommand(t *testing.T) {
 func TestDaemonInvalidTunnel(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -161,11 +161,11 @@ func TestDaemonInvalidTunnel(t *testing.T) {
 	defer conn.Close()
 
 	if err = ipc.Write(cmd, conn); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	var r daemon.Resp
 	if err = ipc.Read(&r, conn); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 
 	if r.Success || !strings.Contains(r.Error, "tunnel not running") {
@@ -181,7 +181,7 @@ func TestDaemonLaunchMismatch(t *testing.T) {
 
 	env, cancel, err := makeEnvWithDaemon(cfg, t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -203,7 +203,7 @@ func TestDaemonLaunchMismatch2(t *testing.T) {
 
 	env, cancel, err := makeEnvWithDaemon(cfg, t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 

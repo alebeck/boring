@@ -12,7 +12,7 @@ func TestSubstitutions(t *testing.T) {
 	cfg.sshConfig = "../testdata/config/ssh_config_subst"
 	env, cancel, err := makeEnvWithDaemon(cfg, t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 

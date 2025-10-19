@@ -8,7 +8,7 @@ import (
 func TestUsage(t *testing.T) {
 	env, err := makeDefaultEnv(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 
 	c, out, err := cliCommand(env)
@@ -26,7 +26,7 @@ func TestUsage(t *testing.T) {
 func TestUsageWithCommand(t *testing.T) {
 	env, err := makeDefaultEnv(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 
 	c, out, err := cliCommand(env, "help") // or any other unknown command

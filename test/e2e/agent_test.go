@@ -10,7 +10,7 @@ func TestAgent(t *testing.T) {
 	cfg.useAgent = true
 	env, cancel, err := makeEnvWithDaemon(cfg, t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 

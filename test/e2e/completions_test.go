@@ -9,7 +9,7 @@ import (
 func TestBash(t *testing.T) {
 	env, err := makeDefaultEnv(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 
 	c, out, err := cliCommand(env, "--shell", "bash")
@@ -27,7 +27,7 @@ func TestBash(t *testing.T) {
 func TestZsh(t *testing.T) {
 	env, err := makeDefaultEnv(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 
 	c, out, err := cliCommand(env, "--shell", "zsh")
@@ -45,7 +45,7 @@ func TestZsh(t *testing.T) {
 func TestFish(t *testing.T) {
 	env, err := makeDefaultEnv(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 
 	c, out, err := cliCommand(env, "--shell", "fish")

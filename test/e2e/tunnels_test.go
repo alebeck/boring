@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 func TestList(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -67,7 +67,7 @@ func TestListNoTunnels(t *testing.T) {
 
 	env, cancel, err := makeEnvWithDaemon(cfg, t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -86,7 +86,7 @@ func TestListNoTunnels(t *testing.T) {
 func TestOpen(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -119,7 +119,7 @@ func TestOpenAll(t *testing.T) {
 	cfg.boringConfig = "../testdata/config/config_small.toml"
 	env, cancel, err := makeEnvWithDaemon(cfg, t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -140,7 +140,7 @@ func TestOpenAll(t *testing.T) {
 func TestOpenAlreadyRunning(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -169,7 +169,7 @@ func TestOpenAlreadyRunning(t *testing.T) {
 func TestOpenBadRemoteConfig(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -189,7 +189,7 @@ func TestOpenBadRemoteConfig(t *testing.T) {
 func TestOpenNoPattern(t *testing.T) {
 	env, err := makeDefaultEnv(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 
 	c, out, err := cliCommand(env, "open")
@@ -208,7 +208,7 @@ func TestOpenNoPattern(t *testing.T) {
 func TestClose(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -248,7 +248,7 @@ func TestClose(t *testing.T) {
 func TestCloseNotRunning(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -267,7 +267,7 @@ func TestCloseNotRunning(t *testing.T) {
 func TestCloseWarnNotRunning(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -294,7 +294,7 @@ func TestCloseWarnNotRunning(t *testing.T) {
 func TestCloseNoPattern(t *testing.T) {
 	env, err := makeDefaultEnv(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 
 	c, out, err := cliCommand(env, "close")
@@ -317,7 +317,7 @@ func TestCloseAll(t *testing.T) {
 func TestAllWithArgument(t *testing.T) {
 	env, err := makeDefaultEnv(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 
 	c, out, err := cliCommand(env, "close", "--all", "arg")
@@ -335,7 +335,7 @@ func TestAllWithArgument(t *testing.T) {
 func TestMalformedGlob(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -397,17 +397,17 @@ func testConnected(l net.Listener, conn net.Conn) error {
 func testTunnel(t *testing.T, from, to string) {
 	l, err := makeListener(to)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer l.Close()
 	conn, err := dial(from)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer conn.Close()
 
 	if err := testConnected(l, conn); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 }
 
@@ -415,7 +415,7 @@ func testTunnel(t *testing.T, from, to string) {
 func TestTunnelLocal(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -438,7 +438,7 @@ func TestTunnelLocal(t *testing.T) {
 func TestTunnelMultiConns(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -452,7 +452,7 @@ func TestTunnelMultiConns(t *testing.T) {
 
 	l, err := makeListener("localhost:49712")
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer l.Close()
 
@@ -460,7 +460,7 @@ func TestTunnelMultiConns(t *testing.T) {
 	for range 100 {
 		conn, err := dial("localhost:49711")
 		if err != nil {
-			t.Fatalf(err.Error())
+			t.Fatalf("%v", err.Error())
 		}
 		defer conn.Close()
 		conns = append(conns, conn)
@@ -480,7 +480,7 @@ func TestTunnelMultiConns(t *testing.T) {
 func TestTunnelMultiTunnels(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -505,7 +505,7 @@ func TestTunnelMultiTunnels(t *testing.T) {
 func TestTunnelRemote(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -529,7 +529,7 @@ func TestOpenManualConfig(t *testing.T) {
 
 	env, cancel, err := makeEnvWithDaemon(cfg, t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -545,7 +545,7 @@ func TestOpenManualConfig(t *testing.T) {
 func TestTunnelReconnect(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -586,7 +586,7 @@ func TestTunnelReconnect(t *testing.T) {
 func TestTunnelReconnectAbort(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -632,7 +632,7 @@ func TestTunnelReconnectAbort(t *testing.T) {
 func TestTunnelJump(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -651,7 +651,7 @@ func TestTunnelJump(t *testing.T) {
 func TestTunnelSocks(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -672,7 +672,7 @@ func TestTunnelSocks(t *testing.T) {
 
 	l, err := makeListener("localhost:49718")
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer l.Close()
 
@@ -683,14 +683,14 @@ func TestTunnelSocks(t *testing.T) {
 	defer conn.Close()
 
 	if err := testConnected(l, conn); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 }
 
 func TestTunnelSocksRemote(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
@@ -711,7 +711,7 @@ func TestTunnelSocksRemote(t *testing.T) {
 
 	l, err := makeListener("localhost:49718")
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer l.Close()
 
@@ -722,7 +722,7 @@ func TestTunnelSocksRemote(t *testing.T) {
 	defer conn.Close()
 
 	if err := testConnected(l, conn); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 }
 
@@ -730,7 +730,7 @@ func TestTunnelSocksRemote(t *testing.T) {
 func TestTunnelKeepAlive(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
 
