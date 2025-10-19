@@ -240,10 +240,10 @@ func (d *daemon) serve() {
 	for {
 		conn, err := d.ln.Accept()
 		if err != nil {
-			log.Errorf("Failed to accept connection: %v", err)
 			if d.ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
 				return
 			}
+			log.Errorf("Failed to accept connection: %v", err)
 			continue
 		}
 		d.wg.Add(1)
