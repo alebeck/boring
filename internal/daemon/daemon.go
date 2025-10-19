@@ -138,6 +138,7 @@ func (d *daemon) handleConn(conn net.Conn) {
 	case List:
 		d.listTunnels(conn)
 	case Shutdown:
+		log.Infof("Shutdown command received.")
 		respond(conn, nil, nil)
 		d.stop()
 	default:
