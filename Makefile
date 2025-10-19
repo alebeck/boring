@@ -7,8 +7,9 @@
 #   make cover-html      - Generate interactive HTML report
 
 TAG := $(shell git describe --tags --exact-match 2>/dev/null)
+VERSION := $(TAG:v%=%)
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null)
-LDFLAGS := -s -w -X main.version=$(TAG) -X main.commit=$(COMMIT)
+LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 
 DIST_DIR := ./dist
 COVER_DIR := $(CURDIR)/cover
