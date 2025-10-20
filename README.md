@@ -108,7 +108,7 @@ Then move the binary in `dist` to a location in your `$PATH`.
 
 <details>
   <summary>Note for Windows users</summary>
-  Windows is fully supported since release 0.6.0. Users currently have to build from source, which is very easy. Make sure Go >= 1.23.0 is installed and then compile via
+  Windows is fully supported since release 0.6.0. Users currently have to build from source, which is very easy. Make sure Go >= 1.25 is installed and then compile via
 
   ```batch
   git clone https://github.com/alebeck/boring && cd boring
