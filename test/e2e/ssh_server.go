@@ -220,7 +220,7 @@ func handleForwardedConnection(channel ssh.Channel, extra []byte) {
 		fmt.Printf("failed to unmarshal forwarded-tcpip payload: %v\n", err)
 		return
 	}
-	addr := fmt.Sprintf("%s:%d", payload.Addr, payload.Port)
+	addr := net.JoinHostPort(payload.Addr, fmt.Sprintf("%d", payload.Port))
 
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
