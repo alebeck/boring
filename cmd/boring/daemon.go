@@ -67,7 +67,7 @@ func ensureDaemon(ctx context.Context) error {
 				if err := killDaemon(ctx); err != nil {
 					info := "Please kill the old daemon process manually. This will be" +
 						" automatic from now on."
-					return fmt.Errorf("could not kill old daemon: %v. %v", err,
+					return fmt.Errorf("could not restart daemon: %v. %v", err,
 						log.Bold+info+log.Reset)
 				}
 			}
@@ -131,7 +131,7 @@ func killDaemon(ctx context.Context) error {
 		return fmt.Errorf("could not send shutdown command: %v", err)
 	}
 	if !resp.Success {
-		return fmt.Errorf("daemon error: %s", resp.Error)
+		return fmt.Errorf("%s", resp.Error)
 	}
 
 	// Wait for termination
