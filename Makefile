@@ -7,9 +7,10 @@
 #   make cover-html      - Generate interactive HTML report
 
 TAG := $(shell git describe --tags --exact-match 2>/dev/null)
+VERSION := $(TAG:v%=%)
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null)
 MOD := $(shell go list -m)
-LDFLAGS := -s -w -X $(MOD)/internal/buildinfo.Tag=$(TAG) \
+LDFLAGS := -s -w -X $(MOD)/internal/buildinfo.Version=$(VERSION) \
 	-X $(MOD)/internal/buildinfo.Commit=$(COMMIT)
 
 DIST_DIR := ./dist

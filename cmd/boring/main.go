@@ -81,14 +81,14 @@ func initLogging() {
 }
 
 func printVersion() {
-	t := buildinfo.Tag
-	if t == "" {
-		t = "snapshot"
+	v := buildinfo.Version
+	if v == "" {
+		v = "snapshot"
 		if buildinfo.Commit != "" {
-			t += fmt.Sprintf(" (#%s)", buildinfo.Commit)
+			v += fmt.Sprintf(" (#%s)", buildinfo.Commit)
 		}
 	}
-	log.Emitf("boring %s\n", t)
+	log.Emitf("boring %s\n", v)
 }
 
 func printUsage() {
