@@ -143,6 +143,9 @@ source <(boring --shell zsh)
 ```sh
 boring --shell fish | source
 ```
+## Further Links
+* pkg.go.dev: https://pkg.go.dev/github.com/alebeck/boring
+* Coveralls: https://coveralls.io/github/alebeck/boring?branch=main
 
-### Credits
+## Credits
 Go gopher logo by Renee French.
