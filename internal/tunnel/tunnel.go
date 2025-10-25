@@ -39,7 +39,7 @@ type Desc struct {
 }
 
 // Tunnel is a representation internal to the tunnel and daemon packages,
-// describing a tunnel that is running or about to run.
+// describing a tunnel that is running or about to be run.
 type Tunnel struct {
 	prepared   bool
 	hops       []ssh_config.Hop
@@ -69,7 +69,7 @@ func (t *Tunnel) Open() (err error) {
 	}
 
 	if err = t.makeClient(); err != nil {
-		return fmt.Errorf("cannot make SSH client: %v", err)
+		return err
 	}
 	log.Debugf("%v: connected to server", t.Name)
 
