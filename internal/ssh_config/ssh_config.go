@@ -175,7 +175,6 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 		if j.port != 0 {
 			jc.Port = j.port
 		}
-		// TODO: Set identity file too?
 
 		// If hostname could not be resolved from ssh config, take it literally
 		if jc.HostName == "" {
