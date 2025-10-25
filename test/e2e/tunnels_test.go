@@ -726,7 +726,6 @@ func TestTunnelSocksRemote(t *testing.T) {
 	}
 }
 
-// Test simple forward tunnel
 func TestTunnelKeepAlive(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
@@ -750,5 +749,65 @@ func TestTunnelKeepAlive(t *testing.T) {
 
 	if server.keepAlives != 1 {
 		t.Fatalf("expected 1 keep-alive, got %d", server.keepAlives)
+	}
+}
+
+// Test SSH certificate authentication
+func TestTunnelCert(t *testing.T) {
+	cfg := defaultConfig
+	cfg.sshConfig = "../testdata/config/ssh_config_cert"
+
+	env, cancel, err := makeEnvWithDaemon(cfg, t)
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	defer cancel()
+
+	c, out, err := cliCommand(env, "open", "test")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 0 {
+		t.Fatalf("exit code %d: %s", c, out)
+	}
+}
+
+// Test sibling cert (*-cert.pub) fallback
+func TestTunnelSiblingCert(t *testing.T) {
+	cfg := defaultConfig
+	cfg.sshConfig = "../testdata/config/ssh_config_sibling_cert"
+
+	env, cancel, err := makeEnvWithDaemon(cfg, t)
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	defer cancel()
+
+	c, out, err := cliCommand(env, "open", "test")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 0 {
+		t.Fatalf("exit code %d: %s", c, out)
+	}
+}
+
+// Test that no cert is used if none is compatible
+func TestTunnelIgnoreWrongCert(t *testing.T) {
+	cfg := defaultConfig
+	cfg.sshConfig = "../testdata/config/ssh_config_wrong_cert"
+
+	env, cancel, err := makeEnvWithDaemon(cfg, t)
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	defer cancel()
+
+	c, out, err := cliCommand(env, "open", "test")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 0 {
+		t.Fatalf("exit code %d: %s", c, out)
 	}
 }

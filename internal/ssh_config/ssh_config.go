@@ -1,6 +1,7 @@
 package ssh_config
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -45,18 +46,20 @@ type Hop struct {
 
 // SSHConfig represents an SSH config read from, e.g., ~/.ssh/config
 type SSHConfig struct {
-	Alias           string
-	User            string
-	HostName        string
-	Port            int
-	KeyCheck        keyCheck
-	IdentityFiles   []string
-	KnownHostsFiles []string
-	Ciphers         []string
-	Macs            []string
-	HostKeyAlgos    []string
-	KexAlgos        []string
-	Jumps           []*jumpSpec
+	Alias            string
+	User             string
+	HostName         string
+	Port             int
+	KeyCheck         keyCheck
+	IdentitiesOnly   bool
+	IdentityFiles    []string
+	CertificateFiles []string
+	KnownHostsFiles  []string
+	Ciphers          []string
+	Macs             []string
+	HostKeyAlgos     []string
+	KexAlgos         []string
+	Jumps            []*jumpSpec
 }
 
 var (
@@ -126,7 +129,9 @@ func ParseSSHConfig(alias, user string) (*SSHConfig, error) {
 		}
 	}
 
+	c.IdentitiesOnly = get("IdentitiesOnly") == "yes"
 	c.IdentityFiles = sub.applyAll(getAll("IdentityFile"), identFileTokens)
+	c.CertificateFiles = getAll("CertificateFile")
 
 	// Known hosts
 	hosts := getAll("GlobalKnownHostsFile")
@@ -170,6 +175,8 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 		if j.port != 0 {
 			jc.Port = j.port
 		}
+		// TODO: Set identity file too?
+
 		// If hostname could not be resolved from ssh config, take it literally
 		if jc.HostName == "" {
 			jc.HostName = j.host
@@ -191,6 +198,7 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 		return nil, err
 	}
 	log.Debugf("Trying %d key file(s)", len(sigs))
+	auth := []ssh.AuthMethod{ssh.PublicKeys(sigs...)}
 
 	keyCallback, keyAlgos, err := sc.makeCallbackAndAlgos()
 	if err != nil {
@@ -204,7 +212,7 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 			MACs:         sc.Macs,
 		},
 		User:              sc.User,
-		Auth:              []ssh.AuthMethod{ssh.PublicKeys(sigs...)},
+		Auth:              auth,
 		HostKeyAlgorithms: keyAlgos,
 		HostKeyCallback:   keyCallback,
 		Timeout:           sshConnTimeout,
@@ -218,25 +226,46 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 
 func (sc *SSHConfig) makeSigners() ([]ssh.Signer, error) {
 	var sigs []ssh.Signer
+	var certs []*ssh.Certificate
+
+	for _, f := range sc.CertificateFiles {
+		cert, err := loadCert(f)
+		if err != nil {
+			log.Warningf("Certificate file %q could not be added: %v", f, err)
+			continue
+		}
+		log.Debugf("Loaded certificate: %s", f)
+		certs = append(certs, cert)
+	}
 
 	// Potential agent keys are added first
-	agentSigs, err := agent.GetSigners()
-	if err != nil {
-		log.Warningf("Unable to get keys from ssh-agent: %v", err)
-	} else {
-		sigs = append(sigs, agentSigs...)
-		log.Debugf("Will try %d key(s) from ssh-agent", len(agentSigs))
+	if !sc.IdentitiesOnly {
+		if agSigs, err := agent.GetSigners(); err != nil {
+			log.Warningf("Unable to get keys from ssh-agent: %v", err)
+		} else {
+			for _, sig := range agSigs {
+				sigs = append(sigs, tryCertify(sig, certs))
+			}
+			log.Debugf("Will try %d key(s) from ssh-agent", len(agSigs))
+		}
 	}
 
 	// Add keys from IdentityFiles
 	for _, f := range sc.IdentityFiles {
-		s, err := loadKey(f)
+		sig, err := loadKey(f)
 		if err != nil {
 			log.Warningf("key file %q could not be added: %v", f, err)
 			continue
 		}
 		log.Debugf("Will try key: %s", f)
-		sigs = append(sigs, *s)
+
+		perKeyCerts := certs
+		if len(perKeyCerts) == 0 {
+			if c, err := loadCert(f + "-cert.pub"); err == nil {
+				perKeyCerts = []*ssh.Certificate{c}
+			}
+		}
+		sigs = append(sigs, tryCertify(sig, perKeyCerts))
 	}
 
 	if len(sigs) == 0 {
@@ -278,13 +307,13 @@ func (sc *SSHConfig) makeCallbackAndAlgos() (cb ssh.HostKeyCallback, algs []stri
 
 func (sc *SSHConfig) validate() error {
 	if sc.HostName == "" {
-		return fmt.Errorf("no host specified.")
+		return fmt.Errorf("no host specified")
 	}
 	if sc.User == "" {
-		return fmt.Errorf("no user specified.")
+		return fmt.Errorf("no user specified")
 	}
 	if sc.Port == 0 {
-		return fmt.Errorf("no port specified.")
+		return fmt.Errorf("no port specified")
 	}
 	return nil
 }
@@ -298,7 +327,7 @@ func (sc *SSHConfig) EnsureUser() {
 	}
 }
 
-func loadKey(path string) (*ssh.Signer, error) {
+func loadKey(path string) (ssh.Signer, error) {
 	if path == "" {
 		return nil, fmt.Errorf("no key specified")
 	}
@@ -310,7 +339,41 @@ func loadKey(path string) (*ssh.Signer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not parse key: %v", err)
 	}
-	return &signer, nil
+	return signer, nil
+}
+
+func loadCert(path string) (*ssh.Certificate, error) {
+	raw, err := os.ReadFile(paths.ReplaceTilde(path))
+	if err != nil {
+		return nil, fmt.Errorf("could not read certificate file: %v", err)
+	}
+	pub, _, _, _, err := ssh.ParseAuthorizedKey(raw)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse certificate file: %v", err)
+	}
+	cert, ok := pub.(*ssh.Certificate)
+	if !ok {
+		return nil, fmt.Errorf("file does not contain a valid SSH certificate")
+	}
+	return cert, nil
+}
+
+func tryCertify(sig ssh.Signer, certs []*ssh.Certificate) ssh.Signer {
+	if _, ok := sig.PublicKey().(*ssh.Certificate); ok || len(certs) == 0 {
+		return sig
+	}
+	pubKey := sig.PublicKey()
+	for _, cert := range certs {
+		if bytes.Equal(pubKey.Marshal(), cert.Key.Marshal()) {
+			certSig, err := ssh.NewCertSigner(cert, sig)
+			if err != nil {
+				log.Warningf("Could not create certified signer: %v", err)
+				continue
+			}
+			return certSig
+		}
+	}
+	return sig
 }
 
 func split(s string) []string {

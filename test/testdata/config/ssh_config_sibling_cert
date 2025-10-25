@@ -1,0 +1,5 @@
+Host *
+    User needs-cert
+    Port 58391
+    IdentityFile ../testdata/keys/client2
+    UserKnownHostsFile ../testdata/known_hosts/known_hosts

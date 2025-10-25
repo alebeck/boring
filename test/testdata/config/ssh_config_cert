@@ -1,0 +1,7 @@
+Host *
+    User needs-cert
+    Port 58391
+    IdentityFile ../testdata/keys/client
+    CertificateFile doesnotexist.pub  # want this to be ignored
+    CertificateFile ../testdata/keys/cert.pub
+    UserKnownHostsFile ../testdata/known_hosts/known_hosts

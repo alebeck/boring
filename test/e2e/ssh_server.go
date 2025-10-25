@@ -15,6 +15,7 @@ const (
 	loopBack          = "127.0.0.1:58391"
 	hostKeyFile       = "../testdata/keys/server"
 	authorizedKeyFile = "../testdata/keys/client.pub"
+	caKeyFile         = "../testdata/keys/ca.pub"
 )
 
 type tcpipForwardRequest struct {
@@ -73,14 +74,30 @@ func startServer() (s *sshServer, err error) {
 		return nil, err
 	}
 
-	s = &sshServer{}
-	s.config = &ssh.ServerConfig{
-		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+	caPub, err := loadAuthorizedKey(caKeyFile)
+	if err != nil {
+		return nil, err
+	}
+
+	checker := &ssh.CertChecker{
+		IsUserAuthority: func(k ssh.PublicKey) bool {
+			return keysEqual(k, caPub)
+		},
+		// allow fallback to raw public keys
+		UserKeyFallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+			if conn.User() == "needs-cert" {
+				return nil, fmt.Errorf("certificate required")
+			}
 			if keysEqual(key, authorized) {
 				return nil, nil
 			}
 			return nil, fmt.Errorf("unauthorized")
 		},
+	}
+
+	s = &sshServer{}
+	s.config = &ssh.ServerConfig{
+		PublicKeyCallback: checker.Authenticate,
 	}
 
 	s.conns = make(map[net.Conn]struct{})

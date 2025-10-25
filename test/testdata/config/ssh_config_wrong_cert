@@ -1,0 +1,6 @@
+Host *
+    User test
+    Port 58391
+    IdentityFile ../testdata/keys/client
+    CertificateFile ../testdata/keys/cert_wrong.pub  # this should not fit the key and thus be ignored
+    UserKnownHostsFile ../testdata/known_hosts/known_hosts
