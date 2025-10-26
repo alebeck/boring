@@ -1,5 +1,5 @@
-dist
 .idea
+/dist/
 /cover/
 /cover_lines.out
 /boring.test
