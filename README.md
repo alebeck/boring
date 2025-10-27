@@ -4,7 +4,7 @@
 
 <img src="assets/gopher.png" width="200">
 
-A simple command line SSH tunnel manager that just works
+A simple command line SSH tunnel manager that just works.
 
 [![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/alebeck/boring/test_and_cover.yml?branch=main&style=flat&logo=github&label=CI)](https://github.com/alebeck/boring/actions/workflows/test_and_cover.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/alebeck/boring?color=orange)](https://github.com/alebeck/boring/releases/latest)
