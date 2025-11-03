@@ -34,6 +34,7 @@ type Desc struct {
 	Port          int         `toml:"port" json:"port"`
 	KeepAlive     *int        `toml:"keep_alive" json:"keep_alive"`
 	Mode          Mode        `toml:"mode" json:"mode"`
+	Group         string      `toml:"group" json:"group"`
 	Status        Status      `toml:"-" json:"status"`
 	LastConn      time.Time   `toml:"-" json:"last_conn"`
 }

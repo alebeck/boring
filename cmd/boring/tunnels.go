@@ -196,27 +196,53 @@ func listTunnels() {
 		return
 	}
 
-	tbl := table.New("Status", "Name", "Local", "", "Remote", "Via")
+	// Group tunnels by their group field
+	groupedTunnels := make(map[string][]*tunnel.Desc)
 	visited := make(map[string]bool)
 
+	// Process configured tunnels
 	for _, t := range conf.Tunnels {
+		var tunnelToAdd *tunnel.Desc
 		if q, ok := ts[t.Name]; ok {
-			tbl.AddRow(status(q), q.Name, q.LocalAddress, q.Mode, q.RemoteAddress, q.Host)
+			tunnelToAdd = q
 			visited[q.Name] = true
-			continue
+		} else {
+			tunnelToAdd = &t
 		}
-		// TODO: case where tunnel is in resp but with different name
-		tbl.AddRow(status(&t), t.Name, t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
+		
+		group := tunnelToAdd.Group
+		if group == "" {
+			group = "default"
+		}
+		groupedTunnels[group] = append(groupedTunnels[group], tunnelToAdd)
 	}
 
 	// Add tunnels that are in resp but not in the config
 	for _, q := range ts {
 		if !visited[q.Name] {
-			tbl.AddRow(status(q), q.Name, q.LocalAddress, q.Mode, q.RemoteAddress, q.Host)
+			group := q.Group
+			if group == "" {
+				group = "default"
+			}
+			groupedTunnels[group] = append(groupedTunnels[group], q)
 		}
 	}
 
-	log.Emitf("%v", tbl)
+	// Display tunnels grouped by group
+	first := true
+	for groupName, tunnels := range groupedTunnels {
+		if !first {
+			log.Emitf("\n")
+		}
+		first = false
+		
+		log.Emitf("Group: %s\n", groupName)
+		tbl := table.New("Status", "Name", "Local", "", "Remote", "Via")
+		for _, t := range tunnels {
+			tbl.AddRow(status(t), t.Name, t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
+		}
+		log.Emitf("%v", tbl)
+	}
 }
 
 func transmitCmd(cmd daemon.Cmd, resp any) error {
