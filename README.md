@@ -27,7 +27,7 @@ Get it: `brew install boring`
 * Supports Unix sockets
 * Automatic re-connection and keep-alives
 * Human-friendly TOML configuration
-* Cross-platform support
+* Cross platform support
 * Smart shell completions
 
 ## Usage
