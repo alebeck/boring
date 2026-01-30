@@ -1,7 +1,6 @@
 package ssh_config
 
 import (
-	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -223,10 +222,7 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 	return hops, nil
 }
 
-func (sc *SSHConfig) makeSigners() ([]ssh.Signer, error) {
-	var sigs []ssh.Signer
-	var certs []*ssh.Certificate
-
+func (sc *SSHConfig) loadCerts() (certs []*ssh.Certificate) {
 	for _, f := range sc.CertificateFiles {
 		cert, err := loadCert(f)
 		if err != nil {
@@ -236,42 +232,147 @@ func (sc *SSHConfig) makeSigners() ([]ssh.Signer, error) {
 		log.Debugf("Loaded certificate: %s", f)
 		certs = append(certs, cert)
 	}
+	return
+}
 
-	// Potential agent keys are added first
-	if !sc.IdentitiesOnly {
-		if agSigs, err := agent.GetSigners(); err != nil {
-			log.Warningf("Unable to get keys from ssh-agent: %v", err)
-		} else {
-			for _, sig := range agSigs {
-				sigs = append(sigs, tryCertify(sig, certs))
+type identity struct {
+	signer ssh.Signer
+	path   string // non-empty only for IdentityFiles
+}
+
+func (sc *SSHConfig) loadIDs() (fileIDs, agentCertIDs, agentCfgIDs, agentOtherIDs []identity) {
+	cfgFP := make(map[string]struct{}, len(sc.IdentityFiles))
+
+	for _, f := range sc.IdentityFiles {
+		s, err := loadPrivateKey(f)
+		if err != nil {
+			log.Warningf("key file %q could not be added: %v", f, err)
+			// Here we still try to load the corresponding public key to mark it configured
+			if pub, err := loadPublicKey(f + ".pub"); err == nil {
+				// If .pub is a certificate, fingerprint its underlying key.
+				if c, ok := pub.(*ssh.Certificate); ok {
+					cfgFP[ssh.FingerprintSHA256(c.Key)] = struct{}{}
+				} else {
+					cfgFP[ssh.FingerprintSHA256(pub)] = struct{}{}
+				}
 			}
-			log.Debugf("Will try %d key(s) from ssh-agent", len(agSigs))
+			continue
+		}
+		fileIDs = append(fileIDs, identity{signer: s, path: f})
+		cfgFP[ssh.FingerprintSHA256(s.PublicKey())] = struct{}{}
+	}
+
+	if agSigs, err := agent.GetSigners(); err != nil {
+		log.Warningf("Unable to get keys from ssh-agent: %v", err)
+	} else {
+		for _, s := range agSigs {
+			// Agent may return certificate identities (public key is a cert)
+			if c, ok := s.PublicKey().(*ssh.Certificate); ok {
+				fp := ssh.FingerprintSHA256(c.Key)
+				if _, ok := cfgFP[fp]; ok || !sc.IdentitiesOnly {
+					agentCertIDs = append(agentCertIDs, identity{signer: s})
+				}
+				continue
+			}
+
+			id := identity{signer: s}
+			fp := ssh.FingerprintSHA256(s.PublicKey())
+			if _, ok := cfgFP[fp]; ok {
+				agentCfgIDs = append(agentCfgIDs, id)
+				// Remove id from fileIDs if existing
+				for i, fid := range fileIDs {
+					if ssh.FingerprintSHA256(fid.signer.PublicKey()) == fp {
+						fileIDs = append(fileIDs[:i], fileIDs[i+1:]...)
+						break
+					}
+				}
+			} else if !sc.IdentitiesOnly {
+				agentOtherIDs = append(agentOtherIDs, id)
+			}
+		}
+	}
+	return
+}
+
+func (sc *SSHConfig) makeSigners() ([]ssh.Signer, error) {
+	// https://github.com/openssh/openssh-portable/blob/832a77000abe61f61bddb9e595f45c7131c0269d/sshconnect2.c#L1669
+	// Order (OpenSSH-like):
+	// 1. CertificateFile certs (bound to first matching private key)
+	// 2. Agent keys that match IdentityFiles
+	// 3. Other agent keys (unless IdentitiesOnly)
+	// 4. IdentityFile keys
+	// + agent certificate identities (already certified signers)
+
+	// Load ID groups
+	fileIDs, agentCertIDs, agentCfgIDs, agentOtherIDs := sc.loadIDs()
+
+	var sigs []ssh.Signer
+	idsForCert := append([]identity{}, agentCfgIDs...)
+	idsForCert = append(idsForCert, agentOtherIDs...)
+	idsForCert = append(idsForCert, fileIDs...)
+
+	bind := func(c *ssh.Certificate) {
+		for _, id := range idsForCert {
+			if certSig, err := certify(c, id.signer); err == nil {
+				sigs = append(sigs, certSig)
+				return
+			}
 		}
 	}
 
-	// Add keys from IdentityFiles
-	for _, f := range sc.IdentityFiles {
-		sig, err := loadKey(f)
-		if err != nil {
-			log.Warningf("key file %q could not be added: %v", f, err)
-			continue
+	if certs := sc.loadCerts(); len(certs) > 0 {
+		// CertificateFile certs: bind each cert to first matching key
+		for _, c := range certs {
+			bind(c)
 		}
-		log.Debugf("Will try key: %s", f)
-
-		perKeyCerts := certs
-		if len(perKeyCerts) == 0 {
-			if c, err := loadCert(f + "-cert.pub"); err == nil {
-				perKeyCerts = []*ssh.Certificate{c}
+	} else {
+		// Implicit certs
+		for _, path := range sc.IdentityFiles {
+			c, err := loadCert(path + "-cert.pub")
+			if err != nil {
+				continue
 			}
+			bind(c)
 		}
-		sigs = append(sigs, tryCertify(sig, perKeyCerts))
+	}
+
+	// Try already-certified agent identities (certificate signers)
+	for _, id := range agentCertIDs {
+		sigs = append(sigs, id.signer)
+	}
+
+	// Plain keys as fallback (bucket order)
+	for _, id := range agentCfgIDs {
+		sigs = append(sigs, id.signer)
+	}
+	for _, id := range agentOtherIDs {
+		sigs = append(sigs, id.signer)
+	}
+	for _, id := range fileIDs {
+		sigs = append(sigs, id.signer)
 	}
 
 	if len(sigs) == 0 {
 		return nil, fmt.Errorf("%s: no key files found", sc.Alias)
 	}
 
-	return sigs, nil
+	for _, sig := range sigs {
+		log.Debugf("%s: will try key %s", sc.Alias, sig)
+	}
+
+	// Dedupe
+	seen := make(map[string]struct{}, len(sigs))
+	out := make([]ssh.Signer, 0, len(sigs))
+	for _, s := range sigs {
+		fp := ssh.FingerprintSHA256(s.PublicKey())
+		if _, ok := seen[fp]; ok {
+			continue
+		}
+		seen[fp] = struct{}{}
+		out = append(out, s)
+	}
+
+	return out, nil
 }
 
 func (sc *SSHConfig) makeCallbackAndAlgos() (cb ssh.HostKeyCallback, algs []string, err error) {
@@ -326,7 +427,7 @@ func (sc *SSHConfig) EnsureUser() {
 	}
 }
 
-func loadKey(path string) (ssh.Signer, error) {
+func loadPrivateKey(path string) (ssh.Signer, error) {
 	if path == "" {
 		return nil, fmt.Errorf("no key specified")
 	}
@@ -339,6 +440,21 @@ func loadKey(path string) (ssh.Signer, error) {
 		return nil, fmt.Errorf("could not parse key: %v", err)
 	}
 	return signer, nil
+}
+
+func loadPublicKey(path string) (ssh.PublicKey, error) {
+	if path == "" {
+		return nil, fmt.Errorf("no key specified")
+	}
+	raw, err := os.ReadFile(paths.ReplaceTilde(path))
+	if err != nil {
+		return nil, fmt.Errorf("could not read public key file: %v", err)
+	}
+	pub, _, _, _, err := ssh.ParseAuthorizedKey(raw)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse public key file: %v", err)
+	}
+	return pub, nil
 }
 
 func loadCert(path string) (*ssh.Certificate, error) {
@@ -357,22 +473,18 @@ func loadCert(path string) (*ssh.Certificate, error) {
 	return cert, nil
 }
 
-func tryCertify(sig ssh.Signer, certs []*ssh.Certificate) ssh.Signer {
-	if _, ok := sig.PublicKey().(*ssh.Certificate); ok || len(certs) == 0 {
-		return sig
+func certify(cert *ssh.Certificate, sig ssh.Signer) (ssh.Signer, error) {
+	if _, ok := sig.PublicKey().(*ssh.Certificate); ok {
+		return nil, fmt.Errorf("signer is already a certificate identity")
 	}
-	pubKey := sig.PublicKey()
-	for _, cert := range certs {
-		if bytes.Equal(pubKey.Marshal(), cert.Key.Marshal()) {
-			certSig, err := ssh.NewCertSigner(cert, sig)
-			if err != nil {
-				log.Warningf("Could not create certified signer: %v", err)
-				continue
-			}
-			return certSig
-		}
+	if ssh.FingerprintSHA256(sig.PublicKey()) != ssh.FingerprintSHA256(cert.Key) {
+		return nil, fmt.Errorf("signer does not match certificate key")
 	}
-	return sig
+	certSig, err := ssh.NewCertSigner(cert, sig)
+	if err != nil {
+		return nil, fmt.Errorf("could not create certified signer: %v", err)
+	}
+	return certSig, nil
 }
 
 func split(s string) []string {
