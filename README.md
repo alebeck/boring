@@ -4,11 +4,12 @@
 
 <img src="assets/gopher.png" width="200">
 
-A simple command line SSH tunnel manager that just works
+A simple command line SSH tunnel manager that just works.
 
 [![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/alebeck/boring/test_and_cover.yml?branch=main&style=flat&logo=github&label=CI)](https://github.com/alebeck/boring/actions/workflows/test_and_cover.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/alebeck/boring?color=orange)](https://github.com/alebeck/boring/releases/latest)
 [![Go Report Card](https://goreportcard.com/badge/github.com/alebeck/boring)](https://goreportcard.com/report/github.com/alebeck/boring)
+[![Coverage Status](https://coveralls.io/repos/github/alebeck/boring/badge.svg?branch=main)](https://coveralls.io/github/alebeck/boring?branch=main)
 ![Static Badge](https://img.shields.io/badge/license-MIT-blue?)
 
 Get it: `brew install boring`
@@ -26,7 +27,7 @@ Get it: `brew install boring`
 * Supports Unix sockets
 * Automatic re-connection and keep-alives
 * Human-friendly TOML configuration
-* Cross-platform support
+* Cross platform support
 * Smart shell completions
 
 ## Usage
@@ -143,6 +144,9 @@ source <(boring --shell zsh)
 ```sh
 boring --shell fish | source
 ```
+## Further Links
+* pkg.go.dev: https://pkg.go.dev/github.com/alebeck/boring
+* Coveralls: https://coveralls.io/github/alebeck/boring?branch=main
 
-### Credits
+## Credits
 Go gopher logo by Renee French.
