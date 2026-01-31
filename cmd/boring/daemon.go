@@ -65,8 +65,8 @@ func ensureDaemon(ctx context.Context) error {
 					b, log.Green, ce.cliHash, log.Reset)
 				// Terminate and wait for restart
 				if err := killDaemon(ctx); err != nil {
-					info := "Please kill the old daemon process manually. This will be" +
-						" automatic from now on."
+					info := "Please kill the old daemon process manually (e.g., `killall boring`)." +
+						" This will be automatic from now on."
 					return fmt.Errorf("could not restart daemon: %v. %v", err,
 						log.Bold+info+log.Reset)
 				}
