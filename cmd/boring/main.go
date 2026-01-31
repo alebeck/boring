@@ -48,7 +48,7 @@ func main() {
 				" or an '--all/-a' flag.")
 		}
 		controlTunnels(os.Args[2:], daemon.Close)
-	case "list", "l":
+	case "list", "l", "ls":
 		listTunnels()
 	case "edit", "e":
 		editConfig()
