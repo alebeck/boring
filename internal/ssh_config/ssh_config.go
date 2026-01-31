@@ -251,15 +251,15 @@ func (sc *SSHConfig) loadIDs() (fileIDs, agentCertIDs, agentCfgIDs, agentOtherID
 			if pub, err := loadPublicKey(f + ".pub"); err == nil {
 				// If .pub is a certificate, fingerprint its underlying key.
 				if c, ok := pub.(*ssh.Certificate); ok {
-					cfgFP[ssh.FingerprintSHA256(c.Key)] = struct{}{}
+					cfgFP[keyFP(c.Key)] = struct{}{}
 				} else {
-					cfgFP[ssh.FingerprintSHA256(pub)] = struct{}{}
+					cfgFP[keyFP(pub)] = struct{}{}
 				}
 			}
 			continue
 		}
 		fileIDs = append(fileIDs, identity{signer: s, path: f})
-		cfgFP[ssh.FingerprintSHA256(s.PublicKey())] = struct{}{}
+		cfgFP[keyFP(s.PublicKey())] = struct{}{}
 	}
 
 	if agSigs, err := agent.GetSigners(); err != nil {
@@ -268,7 +268,7 @@ func (sc *SSHConfig) loadIDs() (fileIDs, agentCertIDs, agentCfgIDs, agentOtherID
 		for _, s := range agSigs {
 			// Agent may return certificate identities (public key is a cert)
 			if c, ok := s.PublicKey().(*ssh.Certificate); ok {
-				fp := ssh.FingerprintSHA256(c.Key)
+				fp := keyFP(c.Key)
 				if _, ok := cfgFP[fp]; ok || !sc.IdentitiesOnly {
 					agentCertIDs = append(agentCertIDs, identity{signer: s})
 				}
@@ -276,12 +276,12 @@ func (sc *SSHConfig) loadIDs() (fileIDs, agentCertIDs, agentCfgIDs, agentOtherID
 			}
 
 			id := identity{signer: s}
-			fp := ssh.FingerprintSHA256(s.PublicKey())
+			fp := keyFP(s.PublicKey())
 			if _, ok := cfgFP[fp]; ok {
 				agentCfgIDs = append(agentCfgIDs, id)
 				// Remove id from fileIDs if existing
 				for i, fid := range fileIDs {
-					if ssh.FingerprintSHA256(fid.signer.PublicKey()) == fp {
+					if keyFP(fid.signer.PublicKey()) == fp {
 						fileIDs = append(fileIDs[:i], fileIDs[i+1:]...)
 						break
 					}
@@ -356,23 +356,13 @@ func (sc *SSHConfig) makeSigners() ([]ssh.Signer, error) {
 		return nil, fmt.Errorf("%s: no key files found", sc.Alias)
 	}
 
+	sigs = dedupeSigners(sigs)
+
 	for _, sig := range sigs {
 		log.Debugf("%s: will try key %s", sc.Alias, sig)
 	}
 
-	// Dedupe
-	seen := make(map[string]struct{}, len(sigs))
-	out := make([]ssh.Signer, 0, len(sigs))
-	for _, s := range sigs {
-		fp := ssh.FingerprintSHA256(s.PublicKey())
-		if _, ok := seen[fp]; ok {
-			continue
-		}
-		seen[fp] = struct{}{}
-		out = append(out, s)
-	}
-
-	return out, nil
+	return sigs, nil
 }
 
 func (sc *SSHConfig) makeCallbackAndAlgos() (cb ssh.HostKeyCallback, algs []string, err error) {
@@ -477,7 +467,7 @@ func certify(cert *ssh.Certificate, sig ssh.Signer) (ssh.Signer, error) {
 	if _, ok := sig.PublicKey().(*ssh.Certificate); ok {
 		return nil, fmt.Errorf("signer is already a certificate identity")
 	}
-	if ssh.FingerprintSHA256(sig.PublicKey()) != ssh.FingerprintSHA256(cert.Key) {
+	if keyFP(sig.PublicKey()) != keyFP(cert.Key) {
 		return nil, fmt.Errorf("signer does not match certificate key")
 	}
 	certSig, err := ssh.NewCertSigner(cert, sig)
@@ -485,6 +475,20 @@ func certify(cert *ssh.Certificate, sig ssh.Signer) (ssh.Signer, error) {
 		return nil, fmt.Errorf("could not create certified signer: %v", err)
 	}
 	return certSig, nil
+}
+
+func dedupeSigners(sigs []ssh.Signer) []ssh.Signer {
+	seen := make(map[string]struct{}, len(sigs))
+	out := make([]ssh.Signer, 0, len(sigs))
+	for _, s := range sigs {
+		fp := keyFP(s.PublicKey())
+		if _, ok := seen[fp]; ok {
+			continue
+		}
+		seen[fp] = struct{}{}
+		out = append(out, s)
+	}
+	return out
 }
 
 func split(s string) []string {
@@ -504,4 +508,10 @@ func filter(alist, allowed []string) []string {
 		}
 	}
 	return out
+}
+
+// keyFP returns a fingerprint string for a public key
+// we can make this more sophisticated later if needed
+func keyFP(k ssh.PublicKey) string {
+	return string(k.Marshal())
 }
