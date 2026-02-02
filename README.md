@@ -84,7 +84,21 @@ Options that can be provided at global and tunnel level (tunnel level takes prec
 
 | **Option**    | **Description**                                                                                                     |
 |---------------|---------------------------------------------------------------------------------------------------------------------|
-| `keep_alive`  | Keep-alive interval **in seconds**. Default: `120` (2 minutes).                                                                                 |
+| `keep_alive`  | Keep-alive interval **in seconds**. Default: `120` (2 minutes).                                                     |
+
+You can influence the behavior of `boring` via a couple of environment variables:
+<details>
+  <summary>Show</summary>
+
+  | **Variable**       | **Description**        | **Default**                                                                        |
+  |--------------------|------------------------|------------------------------------------------------------------------------------|
+  | `$BORING_CONFIG`   | Config file location   | `~/.boring.toml` (Mac & Windows) and `$XDG_CONFIG_HOME/boring/.boring.toml`(Linux) |
+  | `$BORING_LOG_FILE` | Log file location      | `/tmp/boringd.log`                                                                 |
+  | `$BORING_SOCK`     | Socket location        | `/tmp/boringd.sock"`                                                               |
+  | `$DEBUG`           | Enable verbose logging | ` `                                                                                |
+    
+
+</details>
 
 ## Installation
 
