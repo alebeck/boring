@@ -69,16 +69,16 @@ identity = "~/.ssh/id_prod"  # will try default ones if not set
 
 Currently, supported options at tunnel level are:
 
-| **Option**    | **Description**                                                                                                     |
-|---------------|---------------------------------------------------------------------------------------------------------------------|
-| `name`        | Alias for the tunnel. **Required.**                                                                                 |
+| **Option**    | **Description**                                                                                                                                                                    |
+|---------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `name`        | Alias for the tunnel. **Required.**                                                                                                                                                |
 | `local`       | Local address. Can be a `"$host:$port"` network address or a Unix socket. Can be abbreviated as `"$port"` in local and socks modes. **Required** in local, remote and socks modes. |
-| `remote`      | Remote address. As above, but can be abbreviated in remote and socks-remote modes. **Required** in local, remote and socks-remote modes. |
-| `host`        | Either a host alias that matches SSH configs or the actual hostname. **Required.**                            |
-| `mode`        | Mode of the tunnel. Can be either `"local"`, `"remote"`, `"socks"` or `"socks-remote"`. Default is `"local"`.       |
-| `user`        | SSH user. If not set, tries to read it from SSH config, defaulting to `$USER`.                                       |
-| `identity`    | SSH identity file. If not set, tries to read it from SSH config and `ssh-agent`, defaulting to standard identity files.     |
-| `port`        | SSH port. If not set, tries to read it from SSH config, defaulting to `22`.                                          |
+| `remote`      | Remote address. As above, but can be abbreviated in remote and socks-remote modes. **Required** in local, remote and socks-remote modes.                                           |
+| `host`        | Either a host alias that matches SSH configs or the actual hostname. **Required.**                                                                                                 |
+| `mode`        | Mode of the tunnel. Can be either `"local"`, `"remote"`, `"socks"` or `"socks-remote"`. Default is `"local"`.                                                                      |
+| `user`        | SSH user. If not set, tries to read it from SSH config, defaulting to `$USER`.                                                                                                     |
+| `identity`    | SSH identity file. If not set, tries to read it from SSH config and `ssh-agent`, defaulting to standard identity files.                                                            |
+| `port`        | SSH port. If not set, tries to read it from SSH config, defaulting to `22`.                                                                                                        |
 
 Options that can be provided at global and tunnel level (tunnel level takes precedence):
 
@@ -94,7 +94,7 @@ You can influence the behavior of `boring` via a couple of environment variables
   |--------------------|------------------------|------------------------------------------------------------------------------------|
   | `$BORING_CONFIG`   | Config file location   | `~/.boring.toml` (Mac & Windows) and `$XDG_CONFIG_HOME/boring/.boring.toml`(Linux) |
   | `$BORING_LOG_FILE` | Log file location      | `/tmp/boringd.log`                                                                 |
-  | `$BORING_SOCK`     | Socket location        | `/tmp/boringd.sock"`                                                               |
+  | `$BORING_SOCK`     | Socket location        | `/tmp/boringd.sock`                                                                |
   | `$DEBUG`           | Enable verbose logging | ` `                                                                                |
     
 
