@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/alebeck/boring/internal/buildinfo"
+	"github.com/alebeck/boring/internal/config"
 	"github.com/alebeck/boring/internal/ipc"
 	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/tunnel"
@@ -45,19 +46,29 @@ type daemon struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	ln     net.Listener
+	conf   *config.Config
 
 	// TODO: write proper concurrent map structure for this
 	tunnels map[string]*tunnel.Tunnel
+	opening map[string]bool
 	mutex   sync.RWMutex
 
 	once sync.Once
 	wg   sync.WaitGroup
 }
 
-func newDaemon(parent context.Context, ln net.Listener) (*daemon, context.CancelFunc) {
+func newDaemon(parent context.Context, ln net.Listener, conf *config.Config) (*daemon, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(parent)
 	tunnels := make(map[string]*tunnel.Tunnel)
-	d := &daemon{ctx: ctx, cancel: cancel, ln: ln, tunnels: tunnels}
+	opening := make(map[string]bool)
+	d := &daemon{
+		ctx:     ctx,
+		cancel:  cancel,
+		ln:      ln,
+		conf:    conf,
+		tunnels: tunnels,
+		opening: opening,
+	}
 
 	go func() {
 		// Parent-driven shutdown
@@ -151,26 +162,51 @@ func (d *daemon) openTunnel(conn net.Conn, desc *tunnel.Desc) {
 	var err error
 	defer func() { respond(conn, err, nil) }()
 
-	d.mutex.RLock()
-	_, exists := d.tunnels[desc.Name]
-	d.mutex.RUnlock()
-	if exists {
-		err = AlreadyRunning
+	if err = d.startTunnel(desc); err != nil {
 		log.Errorf("%v: could not open: %v", desc.Name, err)
-		return
+	}
+}
+
+func (d *daemon) startTunnel(desc *tunnel.Desc) error {
+	if err := d.reserveTunnel(desc.Name); err != nil {
+		return err
 	}
 
 	t := tunnel.FromDesc(desc)
-	if err = t.Open(); err != nil {
-		log.Errorf("%v: could not open: %v", t.Name, err)
-		return
+	if err := t.Open(); err != nil {
+		d.releaseOpening(desc.Name)
+		return err
 	}
 
 	d.mutex.Lock()
+	delete(d.opening, t.Name)
 	d.tunnels[t.Name] = t
 	d.mutex.Unlock()
 
-	// Register closing logic
+	d.registerTunnelCleanup(t)
+	return nil
+}
+
+func (d *daemon) reserveTunnel(name string) error {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	if _, exists := d.tunnels[name]; exists {
+		return AlreadyRunning
+	}
+	if d.opening[name] {
+		return AlreadyRunning
+	}
+	d.opening[name] = true
+	return nil
+}
+
+func (d *daemon) releaseOpening(name string) {
+	d.mutex.Lock()
+	delete(d.opening, name)
+	d.mutex.Unlock()
+}
+
+func (d *daemon) registerTunnelCleanup(t *tunnel.Tunnel) {
 	go func() {
 		<-t.Closed
 		d.mutex.Lock()
@@ -184,20 +220,27 @@ func (d *daemon) closeTunnel(conn net.Conn, q *tunnel.Desc) {
 	var err error
 	defer func() { respond(conn, err, nil) }()
 
-	d.mutex.RLock()
-	t, ok := d.tunnels[q.Name]
-	d.mutex.RUnlock()
-	if !ok {
-		err = fmt.Errorf("tunnel not running")
+	if err = d.stopTunnel(q.Name); err != nil {
 		log.Errorf("%v: could not close tunnel: %v", q.Name, err)
-		return
+	}
+}
+
+func (d *daemon) stopTunnel(name string) error {
+	d.mutex.Lock()
+	t, ok := d.tunnels[name]
+	if ok {
+		delete(d.tunnels, name)
+	}
+	d.mutex.Unlock()
+	if !ok {
+		return fmt.Errorf("tunnel not running")
 	}
 
-	if err = t.Close(); err != nil {
-		log.Errorf("%v: could not close tunnel: %v", t.Name, err)
-		return
+	if err := t.Close(); err != nil {
+		return err
 	}
 	<-t.Closed
+	return nil
 }
 
 func (d *daemon) listTunnels(conn net.Conn) {
@@ -274,11 +317,17 @@ func Run() {
 	}
 	log.Infof("Listening on %s", ln.Addr())
 
+	conf, err := config.Load()
+	if err != nil {
+		log.Warningf("Could not load config for VPN automation; disabling: %v", err)
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
 
-	d, cleanup := newDaemon(ctx, ln)
+	d, cleanup := newDaemon(ctx, ln, conf)
 	defer cleanup()
+	d.startVPNReconciler()
 
 	d.serve()
 }

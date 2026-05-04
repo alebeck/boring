@@ -1,9 +1,19 @@
+# Optional CIDR-based VPN detection. Tunnels with the VPN flags below can be
+# opened automatically when any active, non-loopback interface IP matches.
+# [vpn]
+# poll_interval = 10
+# stable_for = 30
+# cidrs = ["10.0.0.0/8", "172.16.0.0/12"]
+
 # simple tunnel, uses local (-L) mode by default
 [[tunnels]]
 name = "dev"
 local = "9000"
 remote = "localhost:9000"
 host = "dev-server"       # automatically matches host against SSH config
+# vpn_required = true
+# auto_open_when_vpn = true
+# auto_close_when_vpn_lost = true
 
 # simple remote (-R) tunnel; note that we can also use IP{v4,v6} addresses
 [[tunnels]]

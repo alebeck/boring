@@ -26,6 +26,7 @@ Get it: `brew install boring`
 * Works with SSH config and `ssh-agent`
 * Supports Unix sockets
 * Automatic re-connection and keep-alives
+* VPN-aware auto-open and auto-close for selected tunnels
 * Human-friendly TOML configuration
 * Cross platform support
 * Smart shell completions
@@ -49,12 +50,21 @@ Usage:
 By default, `boring` reads its configuration from `~/.boring.toml` on macOS and Windows, and from `$XDG_CONFIG_HOME/boring/.boring.toml` on Linux. If `$XDG_CONFIG_HOME` is not set, it defaults to `~/.config`. The location of the config file can be overriden by setting `$BORING_CONFIG`. The config is a simple TOML file describing your tunnels:
 
 ```toml
+# optional CIDR-based VPN detection for tunnel automation
+[vpn]
+poll_interval = 10
+stable_for = 30
+cidrs = ["10.0.0.0/8", "172.16.0.0/12"]
+
 # simple tunnel
 [[tunnels]]
 name = "dev"
 local = "9000"
 remote = "localhost:9000"
 host = "dev-server"  # automatically matches host against SSH config
+vpn_required = true
+auto_open_when_vpn = true
+auto_close_when_vpn_lost = true
 
 # example of an explicit host (no SSH config)
 [[tunnels]]
@@ -81,6 +91,19 @@ Currently, supported options at tunnel level are:
 | `identity`    | SSH identity file. If not set, tries to read it from SSH config and `ssh-agent`, defaulting to standard identity files.                                                            |
 | `port`        | SSH port. If not set, tries to read it from SSH config, defaulting to `22`.                                                                                                        |
 | `group`        | Group that the tunnel is assigned to. Groups are only shown in `list` view if at least one tunnel has a group assigned. Can be used for grouped `open`, `close`, and `list`.                         |
+| `vpn_required` | If `true`, the tunnel is only eligible for VPN automation while a local interface IP matches one of the configured `vpn.cidrs`. Manual `open` and `close` behavior is unchanged.                    |
+| `auto_open_when_vpn` | If `true`, the daemon automatically opens the tunnel when it is eligible.                                                                                                                        |
+| `auto_close_when_vpn_lost` | If `true`, the daemon automatically closes the tunnel when it is no longer eligible because VPN detection fails.                                                                      |
+
+Top-level VPN options:
+
+| **Option** | **Description** |
+|------------|-----------------|
+| `vpn.poll_interval` | Seconds between daemon VPN checks. Default: `10`. |
+| `vpn.stable_for` | Seconds an observed VPN state must stay unchanged before opening or closing tunnels. Default: `30`. |
+| `vpn.cidrs` | CIDR ranges that identify the VPN. The daemon considers the VPN connected when any active, non-loopback interface IP is inside any range. |
+
+VPN detection is CIDR-based only; it does not run custom commands, inspect interface names, probe DNS, or parse route tables.
 
 Options that can be provided at global and tunnel level (tunnel level takes precedence):
 

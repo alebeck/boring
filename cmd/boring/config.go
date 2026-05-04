@@ -14,6 +14,12 @@ const defaultConfig = `# An example tunnel is defined below.
 # For more examples, please visit the project's GitHub page.
 # All lines starting with '#' are comments.
 
+# Optional VPN detection for auto-opening/closing marked tunnels.
+# [vpn]
+# poll_interval = 10  # seconds between checks
+# stable_for = 30     # seconds the VPN state must remain unchanged
+# cidrs = ["10.0.0.0/8", "172.16.0.0/12"]
+
 # [[tunnels]]
 # name = "dev"  # Name for the tunnel
 # local = 9000  # Local address to listen on
@@ -22,6 +28,9 @@ const defaultConfig = `# An example tunnel is defined below.
 # port = 22  # (Optional) Server port, defaults to 22
 # user = "neo"  # (Optional) Username, tries ssh config and defaults to $USER
 # identity = "~/.ssh/id_dev"  # (Optional) Key file, tries ssh config and defaults to default keys
+# vpn_required = true  # (Optional) Only eligible for automation while VPN CIDRs match
+# auto_open_when_vpn = true  # (Optional) Auto-open when eligible
+# auto_close_when_vpn_lost = true  # (Optional) Auto-close when VPN is lost
 
 `
 

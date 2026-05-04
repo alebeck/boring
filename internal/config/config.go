@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -10,11 +11,14 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/alebeck/boring/internal/paths"
 	"github.com/alebeck/boring/internal/tunnel"
+	"github.com/alebeck/boring/internal/vpn"
 )
 
 const (
-	fileName   = ".boring.toml"
-	socksLabel = "[SOCKS]"
+	fileName               = ".boring.toml"
+	socksLabel             = "[SOCKS]"
+	defaultVPNPollInterval = 10 // seconds
+	defaultVPNStableFor    = 30 // seconds
 )
 
 var defaultKeepAliveInterval = 2 * 60 // seconds
@@ -28,8 +32,23 @@ type Config struct {
 	// KeepAlive allows to specify a global keep alive interval,
 	// (in seconds) overriding the default one. `0` indicates
 	// no keep alive.
-	KeepAlive  *int                    `toml:"keep_alive"`
+	KeepAlive *int `toml:"keep_alive"`
+	// VPN configures CIDR-based VPN detection for automatic tunnel reconciliation.
+	VPN        VPNConfig               `toml:"vpn"`
 	TunnelsMap map[string]*tunnel.Desc `toml:"-"`
+}
+
+// VPNConfig controls CIDR-based VPN detection in the daemon.
+type VPNConfig struct {
+	PollInterval int      `toml:"poll_interval"`
+	StableFor    int      `toml:"stable_for"`
+	CIDRs        []string `toml:"cidrs"`
+
+	ParsedCIDRs []*net.IPNet `toml:"-"`
+}
+
+func (c VPNConfig) Enabled() bool {
+	return len(c.ParsedCIDRs) > 0
 }
 
 func init() {
@@ -60,6 +79,10 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("could not decode config file: %w", err)
 	}
 
+	if err := normalizeVPNConfig(&cfg.VPN); err != nil {
+		return nil, err
+	}
+
 	// Set global keep alive interval for all tunnels
 	// that don't specify one on their own.
 	for i := range cfg.Tunnels {
@@ -88,6 +111,28 @@ func Load() (*Config, error) {
 
 	cfg.TunnelsMap = m
 	return &cfg, nil
+}
+
+func normalizeVPNConfig(cfg *VPNConfig) error {
+	if cfg.PollInterval < 0 {
+		return fmt.Errorf("vpn.poll_interval cannot be negative")
+	}
+	if cfg.StableFor < 0 {
+		return fmt.Errorf("vpn.stable_for cannot be negative")
+	}
+	if cfg.PollInterval == 0 {
+		cfg.PollInterval = defaultVPNPollInterval
+	}
+	if cfg.StableFor == 0 {
+		cfg.StableFor = defaultVPNStableFor
+	}
+
+	parsed, err := vpn.ParseCIDRs(cfg.CIDRs)
+	if err != nil {
+		return err
+	}
+	cfg.ParsedCIDRs = parsed
+	return nil
 }
 
 func buildTunnelsMap(tunnels []tunnel.Desc) (map[string]*tunnel.Desc, error) {

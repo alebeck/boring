@@ -25,18 +25,21 @@ const (
 // Desc describes a tunnel for user-facing purposes, e.g., in the config file
 // and in the TUI.
 type Desc struct {
-	Name          string      `toml:"name" json:"name"`
-	LocalAddress  StringOrInt `toml:"local" json:"local"`
-	RemoteAddress StringOrInt `toml:"remote" json:"remote"`
-	Host          string      `toml:"host" json:"host"`
-	User          string      `toml:"user" json:"user"`
-	IdentityFile  string      `toml:"identity" json:"identity"`
-	Port          int         `toml:"port" json:"port"`
-	KeepAlive     *int        `toml:"keep_alive" json:"keep_alive"`
-	Group         string      `toml:"group" json:"group"`
-	Mode          Mode        `toml:"mode" json:"mode"`
-	Status        Status      `toml:"-" json:"status"`
-	LastConn      time.Time   `toml:"-" json:"last_conn"`
+	Name                 string      `toml:"name" json:"name"`
+	LocalAddress         StringOrInt `toml:"local" json:"local"`
+	RemoteAddress        StringOrInt `toml:"remote" json:"remote"`
+	Host                 string      `toml:"host" json:"host"`
+	User                 string      `toml:"user" json:"user"`
+	IdentityFile         string      `toml:"identity" json:"identity"`
+	Port                 int         `toml:"port" json:"port"`
+	KeepAlive            *int        `toml:"keep_alive" json:"keep_alive"`
+	Group                string      `toml:"group" json:"group"`
+	VPNRequired          bool        `toml:"vpn_required" json:"vpn_required"`
+	AutoOpenWhenVPN      bool        `toml:"auto_open_when_vpn" json:"auto_open_when_vpn"`
+	AutoCloseWhenVPNLost bool        `toml:"auto_close_when_vpn_lost" json:"auto_close_when_vpn_lost"`
+	Mode                 Mode        `toml:"mode" json:"mode"`
+	Status               Status      `toml:"-" json:"status"`
+	LastConn             time.Time   `toml:"-" json:"last_conn"`
 }
 
 // Tunnel is a representation internal to the tunnel and daemon packages,
