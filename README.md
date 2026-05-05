@@ -56,15 +56,19 @@ poll_interval = 10
 stable_for = 30
 cidrs = ["10.0.0.0/8", "172.16.0.0/12"]
 
+# optional group defaults for VPN automation
+[group.work]
+vpn_required = true
+auto_open_when_vpn = true
+auto_close_when_vpn_lost = true
+
 # simple tunnel
 [[tunnels]]
 name = "dev"
 local = "9000"
 remote = "localhost:9000"
 host = "dev-server"  # automatically matches host against SSH config
-vpn_required = true
-auto_open_when_vpn = true
-auto_close_when_vpn_lost = true
+group = "work"
 
 # example of an explicit host (no SSH config)
 [[tunnels]]
@@ -94,6 +98,8 @@ Currently, supported options at tunnel level are:
 | `vpn_required` | If `true`, the tunnel is only eligible for VPN automation while a local interface IP matches one of the configured `vpn.cidrs`. Manual `open` and `close` behavior is unchanged.                    |
 | `auto_open_when_vpn` | If `true`, the daemon automatically opens the tunnel when it is eligible.                                                                                                                        |
 | `auto_close_when_vpn_lost` | If `true`, the daemon automatically closes the tunnel when it is no longer eligible because VPN detection fails.                                                                      |
+
+The same VPN automation flags can also be set as group defaults using `[group.<name>]`. For tunnels without a group, use `[group.default]`. Tunnel-level `true` values and group-level `true` values are combined.
 
 Top-level VPN options:
 

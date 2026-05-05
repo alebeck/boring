@@ -57,6 +57,98 @@ auto_close_when_vpn_lost = true
 	}
 }
 
+func TestLoadVPNGroupConfig(t *testing.T) {
+	oldPath := Path
+	t.Cleanup(func() { Path = oldPath })
+
+	Path = filepath.Join(t.TempDir(), "config.toml")
+	content := `
+[group.work]
+vpn_required = true
+auto_open_when_vpn = true
+auto_close_when_vpn_lost = true
+
+[[tunnels]]
+name = "internal-api"
+group = "work"
+local = "9000"
+remote = "localhost:9000"
+host = "jumpbox"
+`
+	if err := os.WriteFile(Path, []byte(content), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	desc := cfg.TunnelsMap["internal-api"]
+	if desc == nil {
+		t.Fatal("internal-api missing from TunnelsMap")
+	}
+	if !desc.VPNRequired || !desc.AutoOpenWhenVPN || !desc.AutoCloseWhenVPNLost {
+		t.Fatalf("VPN group flags were not applied: %+v", desc)
+	}
+}
+
+func TestLoadVPNDefaultGroupConfig(t *testing.T) {
+	oldPath := Path
+	t.Cleanup(func() { Path = oldPath })
+
+	Path = filepath.Join(t.TempDir(), "config.toml")
+	content := `
+[group.default]
+vpn_required = true
+auto_open_when_vpn = true
+
+[[tunnels]]
+name = "internal-api"
+local = "9000"
+remote = "localhost:9000"
+host = "jumpbox"
+`
+	if err := os.WriteFile(Path, []byte(content), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	desc := cfg.TunnelsMap["internal-api"]
+	if desc == nil {
+		t.Fatal("internal-api missing from TunnelsMap")
+	}
+	if !desc.VPNRequired || !desc.AutoOpenWhenVPN {
+		t.Fatalf("VPN default group flags were not applied: %+v", desc)
+	}
+}
+
+func TestLoadVPNInvalidGroupConfig(t *testing.T) {
+	oldPath := Path
+	t.Cleanup(func() { Path = oldPath })
+
+	Path = filepath.Join(t.TempDir(), "config.toml")
+	content := `
+[group."bad group"]
+vpn_required = true
+`
+	if err := os.WriteFile(Path, []byte(content), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "group names cannot") {
+		t.Fatalf("Load() error = %q, want invalid group", err)
+	}
+}
+
 func TestLoadVPNInvalidCIDR(t *testing.T) {
 	oldPath := Path
 	t.Cleanup(func() { Path = oldPath })

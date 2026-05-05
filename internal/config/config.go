@@ -34,8 +34,17 @@ type Config struct {
 	// no keep alive.
 	KeepAlive *int `toml:"keep_alive"`
 	// VPN configures CIDR-based VPN detection for automatic tunnel reconciliation.
-	VPN        VPNConfig               `toml:"vpn"`
+	VPN VPNConfig `toml:"vpn"`
+	// Group allows default automation settings for tunnels in a group.
+	Group      map[string]GroupConfig  `toml:"group"`
 	TunnelsMap map[string]*tunnel.Desc `toml:"-"`
+}
+
+// GroupConfig controls defaults for tunnels assigned to a group.
+type GroupConfig struct {
+	VPNRequired          bool `toml:"vpn_required"`
+	AutoOpenWhenVPN      bool `toml:"auto_open_when_vpn"`
+	AutoCloseWhenVPNLost bool `toml:"auto_close_when_vpn_lost"`
 }
 
 // VPNConfig controls CIDR-based VPN detection in the daemon.
@@ -82,6 +91,9 @@ func Load() (*Config, error) {
 	if err := normalizeVPNConfig(&cfg.VPN); err != nil {
 		return nil, err
 	}
+	if err := validateGroupConfig(cfg.Group); err != nil {
+		return nil, err
+	}
 
 	// Set global keep alive interval for all tunnels
 	// that don't specify one on their own.
@@ -90,6 +102,7 @@ func Load() (*Config, error) {
 		if t.KeepAlive == nil {
 			t.KeepAlive = cfg.KeepAlive
 		}
+		applyGroupConfig(t, cfg.Group)
 	}
 
 	// Create a map of tunnel names to tunnel pointers for easy lookup later
@@ -111,6 +124,37 @@ func Load() (*Config, error) {
 
 	cfg.TunnelsMap = m
 	return &cfg, nil
+}
+
+func validateGroupConfig(groups map[string]GroupConfig) error {
+	for name := range groups {
+		if name == "" || strings.Contains(name, " ") ||
+			specialPrefix(name) || containsGlob(name) {
+			return fmt.Errorf("group names cannot be empty, contain spaces,"+
+				" start with special characters, or contain glob characters \"*?[\"."+
+				" Found '%v'", name)
+		}
+	}
+	return nil
+}
+
+func applyGroupConfig(t *tunnel.Desc, groups map[string]GroupConfig) {
+	if len(groups) == 0 {
+		return
+	}
+
+	group := t.Group
+	if group == "" {
+		group = "default"
+	}
+	cfg, ok := groups[group]
+	if !ok {
+		return
+	}
+
+	t.VPNRequired = t.VPNRequired || cfg.VPNRequired
+	t.AutoOpenWhenVPN = t.AutoOpenWhenVPN || cfg.AutoOpenWhenVPN
+	t.AutoCloseWhenVPNLost = t.AutoCloseWhenVPNLost || cfg.AutoCloseWhenVPNLost
 }
 
 func normalizeVPNConfig(cfg *VPNConfig) error {

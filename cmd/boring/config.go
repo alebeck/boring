@@ -20,11 +20,18 @@ const defaultConfig = `# An example tunnel is defined below.
 # stable_for = 30     # seconds the VPN state must remain unchanged
 # cidrs = ["10.0.0.0/8", "172.16.0.0/12"]
 
+# Optional group defaults for VPN automation.
+# [group.work]
+# vpn_required = true
+# auto_open_when_vpn = true
+# auto_close_when_vpn_lost = true
+
 # [[tunnels]]
 # name = "dev"  # Name for the tunnel
 # local = 9000  # Local address to listen on
 # remote = "localhost:9000"  # Remote address to forward to
 # host = "dev-server"  # Hostname of the server, tries to match against ssh config
+# group = "work"  # (Optional) Group for batch operations and group defaults
 # port = 22  # (Optional) Server port, defaults to 22
 # user = "neo"  # (Optional) Username, tries ssh config and defaults to $USER
 # identity = "~/.ssh/id_dev"  # (Optional) Key file, tries ssh config and defaults to default keys

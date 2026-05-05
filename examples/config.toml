@@ -4,6 +4,11 @@
 # poll_interval = 10
 # stable_for = 30
 # cidrs = ["10.0.0.0/8", "172.16.0.0/12"]
+#
+# [group.work]
+# vpn_required = true
+# auto_open_when_vpn = true
+# auto_close_when_vpn_lost = true
 
 # simple tunnel, uses local (-L) mode by default
 [[tunnels]]
