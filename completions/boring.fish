@@ -34,7 +34,7 @@ function __boring_complete
     set arguments (commandline -opc)[3..-1]
 
     if test (count $command) -eq 0
-        printf "%s\n" open close list edit version
+        printf "%s\n" open close list edit version help
         return
     end
 

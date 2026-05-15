@@ -54,6 +54,8 @@ func main() {
 		editConfig()
 	case "version", "v":
 		printVersion()
+	case "help", "h":
+		printUsage()
 	default:
 		log.Printf("Unknown command: %v\n\n", os.Args[1])
 		printUsage()
@@ -102,4 +104,5 @@ func printUsage() {
 	log.Printf("  boring close, c                Close tunnels (same options as 'open')\n")
 	log.Printf("  boring edit, e                 Edit the configuration file\n")
 	log.Printf("  boring version, v              Show the version number\n")
+	log.Printf("  boring help, h                 Show this help message\n")
 }

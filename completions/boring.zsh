@@ -8,6 +8,7 @@ _boring() {
         "list"
         "edit"
         "version"
+        "help"
     )
 
     _boring_get_names() {

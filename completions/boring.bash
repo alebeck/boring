@@ -3,7 +3,7 @@ _boring() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    local commands=("open" "close" "list" "edit" "version")
+    local commands=("open" "close" "list" "edit" "version" "help")
 
     _boring_get_names() {
         local status="$1"
