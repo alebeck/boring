@@ -61,4 +61,3 @@ func TestUsageUnknownCommand(t *testing.T) {
 		t.Errorf("output did not contain unknown command warning: %s", out)
 	}
 }
-
