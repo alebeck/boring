@@ -282,7 +282,6 @@ func printTunnelList(all []*tunnel.Desc) {
 			break
 		}
 	}
-
 	if !hasGroups {
 		log.Emitf("%v", tunnelTable(all))
 		return
@@ -290,23 +289,23 @@ func printTunnelList(all []*tunnel.Desc) {
 
 	// Grouped display
 	groups := make(map[string][]*tunnel.Desc)
+	var groupKeys []string
 	for _, t := range all {
+		if _, ok := groups[t.Group]; !ok && t.Group != "" {
+			groupKeys = append(groupKeys, t.Group)
+		}
 		groups[t.Group] = append(groups[t.Group], t)
 	}
 
-	var groupKeys []string
-	for k := range groups {
-		groupKeys = append(groupKeys, k)
+	// Default group first, if present
+	if _, ok := groups[""]; ok {
+		groupKeys = append([]string{""}, groupKeys...)
 	}
-	sort.Strings(groupKeys)
 
-	first := true
-	for _, gk := range groupKeys {
-		if !first {
+	for i, gk := range groupKeys {
+		if i > 0 {
 			log.Emitf("\n")
 		}
-		first = false
-
 		header := gk
 		if header == "" {
 			header = "default"
