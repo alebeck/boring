@@ -1,7 +1,11 @@
 package ssh_config
 
 import (
-	"net"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/rsa"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -9,53 +13,76 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
-type rsaTestKey struct{}
+const testHostPort = "127.0.0.1:2222"
 
-func (k *rsaTestKey) Type() string {
-	return ssh.KeyAlgoRSA
-}
-
-func (k *rsaTestKey) Marshal() []byte {
-	return []byte{}
-}
-
-func (k *rsaTestKey) Verify(_ []byte, _ *ssh.Signature) error {
-	return nil
-}
-
-type edTestKey struct{}
-
-func (k *edTestKey) Type() string {
-	return ssh.KeyAlgoED25519
-}
-
-func (k *edTestKey) Marshal() []byte {
-	return []byte{}
-}
-
-func (k *edTestKey) Verify(_ []byte, _ *ssh.Signature) error {
-	return nil
-}
-
-// Tests that extractHostKeyAlgos correctly extracts algorithms from a
-// HostKeyCallback that returns a KeyError with known keys.
-func TestExtractHostKeyAlgos(t *testing.T) {
-	cb := func(hostname string, remote net.Addr, key ssh.PublicKey) error {
-		return &knownhosts.KeyError{
-			Want: []knownhosts.KnownKey{
-				{Key: &edTestKey{}},
-				{Key: &rsaTestKey{}},
-				{Key: nil}, // should be ignored
-			},
-		}
+func edPub(t *testing.T) ssh.PublicKey {
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
 	}
-	algos := extractHostKeyAlgos(cb, "example.com")
-	if !reflect.DeepEqual(algos, []string{
-		ssh.KeyAlgoED25519,
+	k, err := ssh.NewPublicKey(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return k
+}
+
+func rsaPub(t *testing.T) ssh.PublicKey {
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, err := ssh.NewPublicKey(&priv.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return k
+}
+
+// callbackFor writes lines to a temp known_hosts file and returns the real
+// knownhosts.New callback for it.
+func callbackFor(t *testing.T, lines string) ssh.HostKeyCallback {
+	p := filepath.Join(t.TempDir(), "known_hosts")
+	if err := os.WriteFile(p, []byte(lines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cb, err := knownhosts.New(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cb
+}
+
+// A trusted CA (@cert-authority) must yield the certificate host key
+// algorithm, so the server is asked to present its host certificate.
+func TestExtractHostKeyAlgosCertAuthority(t *testing.T) {
+	ca := edPub(t)
+	cb := callbackFor(t,
+		"@cert-authority "+knownhosts.Line([]string{testHostPort}, ca)+"\n")
+
+	algos := extractHostKeyAlgos(cb, testHostPort)
+	if !reflect.DeepEqual(algos, []string{ssh.CertAlgoED25519v01}) {
+		t.Fatalf("got %v, want [%s]", algos, ssh.CertAlgoED25519v01)
+	}
+}
+
+// Plain (non-CA) known_hosts entries must yield only plain algorithms,
+// including the RSA SHA-2 expansions, and never a *-cert-v01 algorithm.
+func TestExtractHostKeyAlgosPlain(t *testing.T) {
+	rsaKey := rsaPub(t)
+	edKey := edPub(t)
+	cb := callbackFor(t,
+		knownhosts.Line([]string{testHostPort}, rsaKey)+"\n"+
+			knownhosts.Line([]string{testHostPort}, edKey)+"\n")
+
+	algos := extractHostKeyAlgos(cb, testHostPort)
+	want := []string{
 		ssh.KeyAlgoRSA,
 		ssh.KeyAlgoRSASHA256,
 		ssh.KeyAlgoRSASHA512,
-	}) {
-		t.Errorf("unexpected algorithms: %v", algos)
+		ssh.KeyAlgoED25519,
+	}
+	if !reflect.DeepEqual(algos, want) {
+		t.Fatalf("got %v, want %v", algos, want)
 	}
 }

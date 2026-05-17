@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"crypto/rand"
 	"fmt"
 	"io"
 	"net"
@@ -16,6 +17,7 @@ const (
 	hostKeyFile       = "../testdata/keys/server"
 	authorizedKeyFile = "../testdata/keys/client.pub"
 	caKeyFile         = "../testdata/keys/ca.pub"
+	caPrivKeyFile     = "../testdata/keys/ca"
 )
 
 type tcpipForwardRequest struct {
@@ -69,6 +71,29 @@ type sshServer struct {
 }
 
 func startServer() (s *sshServer, err error) {
+	hostKey, err := loadHostKey(hostKeyFile)
+	if err != nil {
+		return nil, err
+	}
+
+	// host certificate signed by the test CA
+	caKey, err := loadHostKey(caPrivKeyFile)
+	if err != nil {
+		return nil, err
+	}
+	cert := &ssh.Certificate{
+		Key:         hostKey.PublicKey(),
+		CertType:    ssh.HostCert,
+		ValidBefore: ssh.CertTimeInfinity,
+	}
+	if err := cert.SignCert(rand.Reader, caKey); err != nil {
+		return nil, err
+	}
+	certSigner, err := ssh.NewCertSigner(cert, hostKey)
+	if err != nil {
+		return nil, err
+	}
+
 	authorized, err := loadAuthorizedKey(authorizedKeyFile)
 	if err != nil {
 		return nil, err
@@ -104,11 +129,8 @@ func startServer() (s *sshServer, err error) {
 
 	s.pauseCond = sync.NewCond(&s.pauseMu)
 
-	hostKey, err := loadHostKey(hostKeyFile)
-	if err != nil {
-		return nil, err
-	}
 	s.config.AddHostKey(hostKey)
+	s.config.AddHostKey(certSigner)
 
 	s.listener, err = net.Listen("tcp", loopBack)
 	if err != nil {

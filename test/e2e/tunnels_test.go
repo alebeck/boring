@@ -916,6 +916,30 @@ func TestTunnelKeepAlive(t *testing.T) {
 	}
 }
 
+// Test connecting to a server that presents an SSH host certificate,
+// trusted via an @cert-authority known_hosts entry.
+func TestTunnelHostCert(t *testing.T) {
+	cfg := defaultConfig
+	cfg.sshConfig = "../testdata/config/ssh_config_hostcert"
+
+	env, cancel, err := makeEnvWithDaemon(cfg, t)
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	defer cancel()
+
+	c, out, err := cliCommand(env, "open", "test")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 0 {
+		t.Fatalf("exit code %d: %s", c, out)
+	}
+	if !strings.Contains(strings.ToLower(out), "opened tunnel") {
+		t.Errorf("output did not indicate success: %s", out)
+	}
+}
+
 // Test SSH certificate authentication
 func TestTunnelCert(t *testing.T) {
 	cfg := defaultConfig

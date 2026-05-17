@@ -1,0 +1,5 @@
+Match all
+    User test
+    Port 58391
+    IdentityFile ../testdata/keys/client
+    UserKnownHostsFile ../testdata/known_hosts/known_hosts_ca
