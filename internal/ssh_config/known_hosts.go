@@ -15,14 +15,14 @@ func (dummyKey) Type() string                        { return "dummy" }
 func (dummyKey) Marshal() []byte                     { return nil }
 func (dummyKey) Verify([]byte, *ssh.Signature) error { return errors.New("dummy key") }
 
-// certAlgos maps a plain host key type to the certificate host key
-// algorithms used when that host key is signed by a CA.
-var certAlgos = map[string][]string{
-	ssh.KeyAlgoRSA:      {ssh.CertAlgoRSASHA512v01, ssh.CertAlgoRSASHA256v01, ssh.CertAlgoRSAv01},
-	ssh.KeyAlgoED25519:  {ssh.CertAlgoED25519v01},
-	ssh.KeyAlgoECDSA256: {ssh.CertAlgoECDSA256v01},
-	ssh.KeyAlgoECDSA384: {ssh.CertAlgoECDSA384v01},
-	ssh.KeyAlgoECDSA521: {ssh.CertAlgoECDSA521v01},
+var allCertAlgos = []string{
+	ssh.CertAlgoED25519v01,
+	ssh.CertAlgoECDSA256v01,
+	ssh.CertAlgoECDSA384v01,
+	ssh.CertAlgoECDSA521v01,
+	ssh.CertAlgoRSASHA512v01,
+	ssh.CertAlgoRSASHA256v01,
+	ssh.CertAlgoRSAv01,
 }
 
 // isHostAuthority reports whether a key is trusted as a certificate authority
@@ -48,12 +48,16 @@ func extractHostKeyAlgos(cb ssh.HostKeyCallback, host string) (res []string) {
 	var ke *knownhosts.KeyError
 
 	if err := cb(host, addr, dummyKey{}); errors.As(err, &ke) {
+		certsAdded := false
 		for _, k := range ke.Want {
 			if k.Key == nil {
 				continue
 			}
 			if isHostAuthority(cb, host, addr, k.Key) {
-				res = append(res, certAlgos[k.Key.Type()]...)
+				if !certsAdded {
+					res = append(res, allCertAlgos...)
+					certsAdded = true
+				}
 				continue
 			}
 			res = append(res, k.Key.Type())

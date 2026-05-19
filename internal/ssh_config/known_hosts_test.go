@@ -53,16 +53,16 @@ func callbackFor(t *testing.T, lines string) ssh.HostKeyCallback {
 	return cb
 }
 
-// A trusted CA (@cert-authority) must yield the certificate host key
-// algorithm, so the server is asked to present its host certificate.
 func TestExtractHostKeyAlgosCertAuthority(t *testing.T) {
 	ca := edPub(t)
 	cb := callbackFor(t,
 		"@cert-authority "+knownhosts.Line([]string{testHostPort}, ca)+"\n")
 
+	// A CA line carries no host-key-type info, so all cert algorithms are
+	// offered regardless of the CA key's own type (here ed25519).
 	algos := extractHostKeyAlgos(cb, testHostPort)
-	if !reflect.DeepEqual(algos, []string{ssh.CertAlgoED25519v01}) {
-		t.Fatalf("got %v, want [%s]", algos, ssh.CertAlgoED25519v01)
+	if !reflect.DeepEqual(algos, allCertAlgos) {
+		t.Fatalf("got %v, want %v", algos, allCertAlgos)
 	}
 }
 
