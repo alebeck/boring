@@ -4,14 +4,20 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 
+	"github.com/alebeck/boring/internal/log"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
+
+func init() {
+	log.Init(io.Discard, false, false)
+}
 
 const testHostPort = "127.0.0.1:2222"
 
@@ -84,5 +90,39 @@ func TestExtractHostKeyAlgosPlain(t *testing.T) {
 	}
 	if !reflect.DeepEqual(algos, want) {
 		t.Fatalf("got %v, want %v", algos, want)
+	}
+}
+
+// #29286: makeCallbackAndAlgos must narrow the advertised
+// HostKeyAlgorithms to the types actually contained in known_hosts.
+func TestMakeCallbackAndAlgos(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "known_hosts")
+	if err := os.WriteFile(p,
+		[]byte(knownhosts.Line([]string{testHostPort}, rsaPub(t))+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	sc := &SSHConfig{
+		Alias:           "testhost",
+		HostName:        "127.0.0.1",
+		Port:            2222,
+		KnownHostsFiles: []string{p},
+		HostKeyAlgos: []string{
+			ssh.KeyAlgoED25519, ssh.KeyAlgoRSA,
+			ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSASHA512, ssh.KeyAlgoECDSA256,
+		},
+		KeyCheck: strict,
+	}
+
+	cb, algs, err := sc.makeCallbackAndAlgos()
+	if err != nil {
+		t.Fatalf("makeCallbackAndAlgos: %v", err)
+	}
+	if cb == nil {
+		t.Fatal("nil host key callback")
+	}
+	want := []string{ssh.KeyAlgoRSA, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSASHA512}
+	if !reflect.DeepEqual(algs, want) {
+		t.Fatalf("not narrowed to pinned type: got %v, want %v", algs, want)
 	}
 }
