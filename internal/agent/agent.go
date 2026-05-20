@@ -3,7 +3,6 @@ package agent
 import (
 	"fmt"
 	"net"
-	"os"
 	"sync"
 
 	"golang.org/x/crypto/ssh"
@@ -11,42 +10,45 @@ import (
 )
 
 var (
-	// Keep a single agent instance for all connection attempts
-	inst agent.ExtendedAgent
-	mu   sync.Mutex
+	// insts caches one agent client per socket path, so repeated connection
+	// attempts reuse a single connection.
+	insts = make(map[string]agent.ExtendedAgent)
+	mu    sync.Mutex
 )
 
-func getAgent() (agent.ExtendedAgent, error) {
+func getAgent(sock string) (agent.ExtendedAgent, error) {
+	if sock == "" {
+		return nil, fmt.Errorf("no SSH agent socket configured")
+	}
+
 	mu.Lock()
 	defer mu.Unlock()
 
-	if inst != nil {
-		return inst, nil
-	}
-
-	sock := os.Getenv("SSH_AUTH_SOCK")
-	if sock == "" {
-		return nil, fmt.Errorf("SSH_AUTH_SOCK is not set")
+	if a, ok := insts[sock]; ok {
+		return a, nil
 	}
 
 	conn, err := net.Dial("unix", sock)
 	if err != nil {
-		return nil, fmt.Errorf("could not dial agent: %v", err)
+		return nil, fmt.Errorf("could not dial agent at %s: %w", sock, err)
 	}
 
-	inst = agent.NewClient(conn)
-	return inst, nil
+	a := agent.NewClient(conn)
+	insts[sock] = a
+	return a, nil
 }
 
-func GetSigners() ([]ssh.Signer, error) {
-	agent, err := getAgent()
+// GetSigners returns the signers held by the SSH agent listening on the given
+// socket path.
+func GetSigners(sock string) ([]ssh.Signer, error) {
+	a, err := getAgent(sock)
 	if err != nil {
 		return nil, err
 	}
 
-	signers, err := agent.Signers()
+	signers, err := a.Signers()
 	if err != nil {
-		return nil, fmt.Errorf("could not retrieve signers from agent: %v", err)
+		return nil, fmt.Errorf("could not retrieve signers from agent: %w", err)
 	}
 
 	return signers, nil

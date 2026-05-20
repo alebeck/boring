@@ -54,6 +54,7 @@ type SSHConfig struct {
 	KeyCheck         keyCheck
 	IdentitiesOnly   bool
 	IdentityFiles    []string
+	AgentSock        string // SSH agent socket (from IdentityAgent or $SSH_AUTH_SOCK)
 	CertificateFiles []string
 	KnownHostsFiles  []string
 	Ciphers          []string
@@ -137,6 +138,7 @@ func ParseSSHConfig(alias, user string) (*SSHConfig, error) {
 
 	c.IdentitiesOnly = get("IdentitiesOnly") == "yes"
 	c.IdentityFiles = sub.applyAll(getAll("IdentityFile"), identFileTokens)
+	c.AgentSock = resolveAgentSock(get("IdentityAgent"))
 	c.CertificateFiles = getAll("CertificateFile")
 
 	// Known hosts
@@ -147,6 +149,25 @@ func ParseSSHConfig(alias, user string) (*SSHConfig, error) {
 	}
 
 	return c, nil
+}
+
+// resolveAgentSock resolves the SSH agent socket from an IdentityAgent
+// directive value. An absent directive (empty value) or the literal
+// "SSH_AUTH_SOCK" falls back to $SSH_AUTH_SOCK; "none" disables the agent; a
+// "$VAR" value is read from the environment; anything else is treated as a
+// path, with surrounding quotes stripped and a leading "~" expanded.
+func resolveAgentSock(raw string) string {
+	v := strings.Trim(strings.TrimSpace(raw), `"`)
+	switch {
+	case v == "" || v == "SSH_AUTH_SOCK":
+		return os.Getenv("SSH_AUTH_SOCK")
+	case v == "none":
+		return ""
+	case strings.HasPrefix(v, "$"):
+		return os.Getenv(v[1:])
+	default:
+		return paths.ReplaceTilde(v)
+	}
 }
 
 // ToHops creates an ordered series of Hops from an SSHConfig. The given
@@ -297,7 +318,7 @@ func (sc *SSHConfig) loadIDs() (fileIDs, agentCertIDs, agentCfgIDs, agentOtherID
 		cfgFP[keyFP(s.PublicKey())] = struct{}{}
 	}
 
-	if agSigs, err := agent.GetSigners(); err != nil {
+	if agSigs, err := agent.GetSigners(sc.AgentSock); err != nil {
 		log.Warningf("Unable to get keys from ssh-agent: %v", err)
 	} else {
 		for _, s := range agSigs {
