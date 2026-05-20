@@ -441,13 +441,16 @@ func (d dashboard) toggleSelected() (tea.Model, tea.Cmd) {
 	return d, openTunnelCmd(*d.rows[d.cursor], d.prompter)
 }
 
-// selectedIsRunning reports whether the tunnel under the cursor is running.
+// selectedIsRunning reports whether the tunnel under the cursor is genuinely
+// live, i.e. Open or Reconn. A dropped 2FA tunnel reported by `list` rests at
+// NeedsAuth: it is present in d.running but is not "running" for the purposes
+// of the enter toggle — enter on it must re-open (re-authenticate), not close.
 func (d dashboard) selectedIsRunning() bool {
 	if len(d.rows) == 0 {
 		return false
 	}
-	_, ok := d.running[d.rows[d.cursor].Name]
-	return ok
+	t, ok := d.running[d.rows[d.cursor].Name]
+	return ok && t.Status != tunnel.NeedsAuth
 }
 
 // clampCursor keeps the cursor within the current row range.

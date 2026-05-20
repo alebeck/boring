@@ -49,7 +49,13 @@ type daemon struct {
 
 	// TODO: write proper concurrent map structure for this
 	tunnels map[string]*tunnel.Tunnel
-	mutex   sync.RWMutex
+	// needsAuth holds Desc snapshots of 2FA (keyboard-interactive) tunnels
+	// that dropped and await re-authentication. They are no longer in
+	// d.tunnels (their run() has exited), but `list` still surfaces them so
+	// the user sees the NeedsAuth status and can re-open them. A tunnel is in
+	// at most one of d.tunnels / d.needsAuth at any time.
+	needsAuth map[string]tunnel.Desc
+	mutex     sync.RWMutex
 
 	once sync.Once
 	wg   sync.WaitGroup
@@ -58,7 +64,8 @@ type daemon struct {
 func newDaemon(parent context.Context, ln net.Listener) (*daemon, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(parent)
 	tunnels := make(map[string]*tunnel.Tunnel)
-	d := &daemon{ctx: ctx, cancel: cancel, ln: ln, tunnels: tunnels}
+	needsAuth := make(map[string]tunnel.Desc)
+	d := &daemon{ctx: ctx, cancel: cancel, ln: ln, tunnels: tunnels, needsAuth: needsAuth}
 
 	go func() {
 		// Parent-driven shutdown
@@ -169,9 +176,15 @@ func (d *daemon) openTunnel(conn net.Conn, br *bufio.Reader, desc *tunnel.Desc) 
 	var err error
 	defer func() { respondOpen(conn, err) }()
 
-	d.mutex.RLock()
+	d.mutex.Lock()
 	_, exists := d.tunnels[desc.Name]
-	d.mutex.RUnlock()
+	if !exists {
+		// Re-opening a tunnel that dropped into NeedsAuth: clear its holding
+		// entry so `list` no longer reports the stale snapshot once the fresh
+		// connection takes over.
+		delete(d.needsAuth, desc.Name)
+	}
+	d.mutex.Unlock()
 	if exists {
 		err = AlreadyRunning
 		log.Errorf("%v: could not open: %v", desc.Name, err)
@@ -194,6 +207,13 @@ func (d *daemon) openTunnel(conn net.Conn, br *bufio.Reader, desc *tunnel.Desc) 
 		<-t.Closed
 		d.mutex.Lock()
 		delete(d.tunnels, t.Name)
+		if t.Status == tunnel.NeedsAuth {
+			// A 2FA tunnel dropped: keep a Desc snapshot so `list` can show
+			// its NeedsAuth status until the user re-opens or closes it.
+			// Reading t.Status here is safe — the t.Closed receive
+			// establishes happens-before with run()'s final write.
+			d.needsAuth[t.Name] = *t.Desc
+		}
 		d.mutex.Unlock()
 		log.Infof("Closed tunnel %s", t.Name)
 	}()
@@ -203,9 +223,19 @@ func (d *daemon) closeTunnel(conn net.Conn, q *tunnel.Desc) {
 	var err error
 	defer func() { respond(conn, err, nil) }()
 
-	d.mutex.RLock()
+	d.mutex.Lock()
 	t, ok := d.tunnels[q.Name]
-	d.mutex.RUnlock()
+	if !ok {
+		// A 2FA tunnel awaiting re-auth has no live goroutines — its run()
+		// already exited. Closing it just drops the holding-map snapshot.
+		if _, awaiting := d.needsAuth[q.Name]; awaiting {
+			delete(d.needsAuth, q.Name)
+			d.mutex.Unlock()
+			log.Infof("Closed tunnel %s", q.Name)
+			return
+		}
+	}
+	d.mutex.Unlock()
 	if !ok {
 		err = fmt.Errorf("tunnel not running")
 		log.Errorf("%v: could not close tunnel: %v", q.Name, err)
@@ -221,9 +251,14 @@ func (d *daemon) closeTunnel(conn net.Conn, q *tunnel.Desc) {
 
 func (d *daemon) listTunnels(conn net.Conn) {
 	d.mutex.RLock()
-	ts := make(map[string]tunnel.Desc, len(d.tunnels))
+	ts := make(map[string]tunnel.Desc, len(d.tunnels)+len(d.needsAuth))
 	for n, t := range d.tunnels {
 		ts[n] = *t.Desc
+	}
+	// 2FA tunnels that dropped into NeedsAuth: their snapshots already carry
+	// Status == NeedsAuth, so surface them alongside the live tunnels.
+	for n, desc := range d.needsAuth {
+		ts[n] = desc
 	}
 	d.mutex.RUnlock()
 	respond(conn, nil, ts)
