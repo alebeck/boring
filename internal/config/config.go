@@ -11,10 +11,13 @@ import (
 	"github.com/alebeck/boring/internal/tunnel"
 )
 
-const (
-	fileName   = ".boring.toml"
-	socksLabel = "[SOCKS]"
-)
+const fileName = ".boring.toml"
+
+// SocksLabel is the display-only placeholder substituted for a socks tunnel's
+// remote address (and a reverse-socks tunnel's local address) when a config is
+// loaded. Those addresses are unused for socks modes; the label keeps the list
+// view readable. It must never be written back to the config file.
+const SocksLabel = "[SOCKS]"
 
 var defaultKeepAliveInterval = 2 * 60 // seconds
 
@@ -84,9 +87,9 @@ func loadFrom(path string) (*Config, error) {
 	for _, t := range m {
 		switch t.Mode {
 		case tunnel.Socks:
-			t.RemoteAddress = socksLabel
+			t.RemoteAddress = SocksLabel
 		case tunnel.RemoteSocks:
-			t.LocalAddress = socksLabel
+			t.LocalAddress = SocksLabel
 		}
 	}
 

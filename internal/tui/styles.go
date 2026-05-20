@@ -18,6 +18,7 @@ var (
 			Padding(1, 2).
 			Width(56) // wrap server-controlled instruction/question text
 	modalTitleStyle = lipgloss.NewStyle().Bold(true)
+	formLabelStyle  = lipgloss.NewStyle().Bold(true).Faint(true)
 )
 
 // statusStyles maps a tunnel status to the style used for its label.

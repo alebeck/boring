@@ -11,4 +11,15 @@ const (
 	keyHelp    = "?"
 	keyEnter   = "enter"
 	keySpace   = " "
+	keyAdd     = "a"
+	keyEdit    = "e"
+)
+
+// Form key bindings, matched against tea.KeyMsg.String().
+const (
+	keyTab      = "tab"
+	keyShiftTab = "shift+tab"
+	keyLeft     = "left"
+	keyRight    = "right"
+	keyEsc      = "esc"
 )

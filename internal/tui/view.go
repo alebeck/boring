@@ -29,11 +29,14 @@ func (d dashboard) View() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("boring"))
 	b.WriteString("\n\n")
-	if d.authModal != nil {
+	switch {
+	case d.authModal != nil:
 		b.WriteString(d.authModalView())
-	} else if d.showHelp {
+	case d.form != nil:
+		b.WriteString(d.form.View())
+	case d.showHelp:
 		b.WriteString(helpView())
-	} else {
+	default:
 		b.WriteString(d.tableView())
 	}
 	b.WriteString("\n")
@@ -136,7 +139,8 @@ func renderRow(t *tunnel.Desc, widths []int, selected bool) string {
 // statusBar renders the bottom bar: a status message, or a key hint.
 func (d dashboard) statusBar() string {
 	if d.status == "" {
-		return statusBarStyle.Render("j/k move · enter open/close · ? help · q quit")
+		return statusBarStyle.Render(
+			"j/k move · enter open/close · a add · e edit · ? help · q quit")
 	}
 	if strings.HasPrefix(d.status, daemonUnavailablePrefix) {
 		return errStyle.Render(d.status)
@@ -152,6 +156,8 @@ func helpView() string {
 		"  down/j   move cursor down",
 		"  enter    open/close selected tunnel",
 		"  space    open/close selected tunnel",
+		"  a        add a new tunnel",
+		"  e        edit the selected tunnel",
 		"  ?        toggle this help",
 		"  q        quit",
 		"  ctrl+c   quit",

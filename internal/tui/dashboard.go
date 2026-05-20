@@ -21,6 +21,7 @@ const daemonUnavailablePrefix = "daemon unavailable"
 // dashboard is the root TUI model: a live, navigable list of tunnels.
 type dashboard struct {
 	configured []tunnel.Desc           // tunnels from the config file, fixed order
+	keepAlive  *int                    // global keep-alive, preserved across saves
 	rows       []*tunnel.Desc          // merged configured + running, what is displayed
 	running    map[string]*tunnel.Desc // currently running tunnels, by name
 	cursor     int
@@ -31,11 +32,16 @@ type dashboard struct {
 	prompter   *tuiPrompter     // relays interactive auth prompts to the modal
 	authModal  *authModal       // active auth modal, nil when none is shown
 	authQueue  []authRequestMsg // auth requests waiting for the active modal to finish
+	form       *tunnelForm      // active add/edit form, nil when none is shown
 }
 
 // newDashboard builds the initial dashboard from the loaded config.
 func newDashboard(conf *config.Config, prompter *tuiPrompter) dashboard {
-	d := dashboard{configured: conf.Tunnels, prompter: prompter}
+	d := dashboard{
+		configured: conf.Tunnels,
+		keepAlive:  conf.KeepAlive,
+		prompter:   prompter,
+	}
 	d.rows = tunnel.Order(d.configured, nil)
 	return d
 }
@@ -58,12 +64,22 @@ func (d dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case authRequestMsg:
 		return d.handleAuthRequest(msg)
 	case tea.KeyMsg:
-		if d.authModal != nil {
-			return d.updateAuthModal(msg)
-		}
-		return d.handleKey(msg)
+		return d.routeKey(msg)
 	}
 	return d, nil
+}
+
+// routeKey dispatches a keypress: the auth modal takes precedence, then the
+// add/edit form, otherwise the dashboard's own key handling. In practice at
+// most one of {modal, form} is active.
+func (d dashboard) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if d.authModal != nil {
+		return d.updateAuthModal(msg)
+	}
+	if d.form != nil {
+		return d.routeFormKey(msg)
+	}
+	return d.handleKey(msg)
 }
 
 // handleAuthRequest shows a new auth modal, or queues the request behind the
@@ -191,8 +207,110 @@ func (d dashboard) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return d, nil
 	case keyEnter, keySpace:
 		return d.toggleSelected()
+	case keyAdd:
+		return d.openAddForm()
+	case keyEdit:
+		return d.openEditForm()
 	}
 	return d, nil
+}
+
+// openAddForm shows an empty form for a new tunnel.
+func (d dashboard) openAddForm() (tea.Model, tea.Cmd) {
+	f := newTunnelForm()
+	d.form = &f
+	return d, nil
+}
+
+// openEditForm shows a form populated from the selected configured tunnel. It
+// does nothing when there are no rows, and sets a hint when the selected tunnel
+// is running but not present in the config.
+func (d dashboard) openEditForm() (tea.Model, tea.Cmd) {
+	if len(d.rows) == 0 {
+		return d, nil
+	}
+	name := d.rows[d.cursor].Name
+	for i := range d.configured {
+		if d.configured[i].Name == name {
+			f := formFromDesc(d.configured[i])
+			d.form = &f
+			return d, nil
+		}
+	}
+	d.status = name + " is not in the config"
+	return d, nil
+}
+
+// routeFormKey routes a keypress into the active form and acts on the result.
+func (d dashboard) routeFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	form, action := d.form.update(msg)
+	switch action {
+	case formCancel:
+		d.form = nil
+		return d, nil
+	case formSave:
+		d.form = &form
+		return d.saveForm()
+	default:
+		d.form = &form
+		return d, nil
+	}
+}
+
+// saveForm runs the save flow for the active form: build a Desc, validate the
+// resulting tunnel list, write the config, and reload it. Any error keeps the
+// form open with errMsg set; a success closes the form and refreshes the list.
+func (d dashboard) saveForm() (tea.Model, tea.Cmd) {
+	desc, err := d.form.toDesc()
+	if err != nil {
+		d.setFormError(err)
+		return d, nil
+	}
+	newList := d.tunnelListWith(desc)
+	if err := config.Validate(newList); err != nil {
+		d.setFormError(err)
+		return d, nil
+	}
+	cfg := &config.Config{Tunnels: newList, KeepAlive: d.keepAlive}
+	if err := config.Save(cfg, config.Path); err != nil {
+		d.setFormError(err)
+		return d, nil
+	}
+	d.applySavedConfig(desc.Name)
+	return d, pollTunnels()
+}
+
+// setFormError records err on the form so the save flow can show it inline.
+func (d *dashboard) setFormError(err error) {
+	d.form.errMsg = err.Error()
+}
+
+// tunnelListWith returns a copy of the configured tunnels with desc applied:
+// the matching entry replaced when editing, desc appended when adding.
+func (d dashboard) tunnelListWith(desc tunnel.Desc) []tunnel.Desc {
+	newList := make([]tunnel.Desc, 0, len(d.configured)+1)
+	newList = append(newList, d.configured...)
+	if d.form.editing != "" {
+		for i := range newList {
+			if newList[i].Name == d.form.editing {
+				newList[i] = desc
+				return newList
+			}
+		}
+	}
+	return append(newList, desc)
+}
+
+// applySavedConfig reloads the config after a successful save, closes the form,
+// and reports the saved tunnel in the status bar.
+func (d *dashboard) applySavedConfig(name string) {
+	if conf, err := config.Load(); err == nil {
+		d.configured = conf.Tunnels
+		d.keepAlive = conf.KeepAlive
+		d.rows = tunnel.Order(d.configured, d.running)
+	}
+	d.status = "Saved " + name + "."
+	d.form = nil
 }
 
 // toggleSelected opens the selected tunnel if it is not running, or closes it
