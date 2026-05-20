@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/alebeck/boring/internal/auth"
 	"github.com/alebeck/boring/internal/config"
 	"github.com/alebeck/boring/internal/daemon"
 	"github.com/alebeck/boring/internal/log"
@@ -127,11 +129,15 @@ func controlTunnels(args []string, kind daemon.CmdKind) {
 	}
 
 	// Issue concurrent commands for all tunnels
+	var prompter auth.Prompter
+	if kind == daemon.Open {
+		prompter = openPrompter()
+	}
 	var g errgroup.Group
 	for n := range keep {
 		g.Go(func() error {
 			if kind == daemon.Open {
-				return openTunnel(ts[n])
+				return openTunnel(ts[n], prompter)
 			} else if kind == daemon.Close {
 				return closeTunnel(ts[n])
 			}
@@ -145,8 +151,38 @@ func controlTunnels(args []string, kind daemon.CmdKind) {
 	}
 }
 
-func openTunnel(t *tunnel.Desc) error {
-	resp, err := sendCmd(daemon.Cmd{Kind: daemon.Open, Tunnel: *t})
+// syncPrompter serializes Prompt calls so the concurrent open goroutines in
+// controlTunnels do not race on the shared terminal — one tunnel's 2FA read
+// stealing another's keystrokes, or interleaved prompt text.
+type syncPrompter struct {
+	inner auth.Prompter
+	mu    sync.Mutex
+}
+
+func (p *syncPrompter) Prompt(name, instruction string,
+	questions []string, echo []bool) ([]string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.inner.Prompt(name, instruction, questions, echo)
+}
+
+// openPrompter returns the auth prompter for `boring open`: a terminal prompter
+// for interactive sessions, or one that fails fast when there is no terminal to
+// prompt on. The result is wrapped so concurrent open goroutines serialize.
+func openPrompter() auth.Prompter {
+	var base auth.Prompter
+	if isTerm {
+		base = auth.NewTerminalPrompter()
+	} else {
+		base = auth.FuncPrompter(func(_, _ string, _ []string, _ []bool) ([]string, error) {
+			return nil, errors.New("interactive authentication required but stdin is not a terminal")
+		})
+	}
+	return &syncPrompter{inner: base}
+}
+
+func openTunnel(t *tunnel.Desc, prompter auth.Prompter) error {
+	resp, err := sendOpen(daemon.Cmd{Kind: daemon.Open, Tunnel: *t}, prompter)
 	if err != nil {
 		log.Errorf("Could not transmit 'open' command: %v", err)
 		return errOpFailed

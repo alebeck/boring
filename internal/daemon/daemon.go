@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -102,6 +103,19 @@ func respond(conn net.Conn, opErr error, ts map[string]tunnel.Desc) {
 	}
 }
 
+// respondOpen sends the final result of an Open exchange as a typed MsgResp
+// envelope. Open is multi-message: AuthPrompt messages may precede this.
+func respondOpen(conn net.Conn, opErr error) {
+	resp := Resp{Success: true, Info: Info{Commit: buildinfo.Commit}}
+	if opErr != nil {
+		resp.Success = false
+		resp.Error = opErr.Error()
+	}
+	if err := WriteMsg(conn, MsgResp, resp); err != nil {
+		log.Errorf("could not send response: %v", err)
+	}
+}
+
 func (d *daemon) handleConn(conn net.Conn) {
 	defer conn.Close()
 
@@ -116,9 +130,13 @@ func (d *daemon) handleConn(conn net.Conn) {
 	}()
 	defer close(done)
 
+	// Shared reader so bytes buffered past the first message survive
+	// across reads (needed for the multi-message Open exchange).
+	br := bufio.NewReader(conn)
+
 	// Read command
 	var cmd Cmd
-	if err := ipc.Read(&cmd, conn); err != nil {
+	if err := ipc.Read(&cmd, br); err != nil {
 		// Ignore cases where client aborts connection
 		if !errors.Is(err, io.EOF) {
 			log.Errorf("Could not receive command: %v", err)
@@ -132,7 +150,7 @@ func (d *daemon) handleConn(conn net.Conn) {
 	case Nop:
 		respond(conn, nil, nil)
 	case Open:
-		d.openTunnel(conn, &cmd.Tunnel)
+		d.openTunnel(conn, br, &cmd.Tunnel)
 	case Close:
 		d.closeTunnel(conn, &cmd.Tunnel)
 	case List:
@@ -147,9 +165,9 @@ func (d *daemon) handleConn(conn net.Conn) {
 	}
 }
 
-func (d *daemon) openTunnel(conn net.Conn, desc *tunnel.Desc) {
+func (d *daemon) openTunnel(conn net.Conn, br *bufio.Reader, desc *tunnel.Desc) {
 	var err error
-	defer func() { respond(conn, err, nil) }()
+	defer func() { respondOpen(conn, err) }()
 
 	d.mutex.RLock()
 	_, exists := d.tunnels[desc.Name]
@@ -160,7 +178,8 @@ func (d *daemon) openTunnel(conn net.Conn, desc *tunnel.Desc) {
 		return
 	}
 
-	t := tunnel.FromDesc(desc, nil)
+	prompter := newIPCPrompter(conn, br)
+	t := tunnel.FromDesc(desc, prompter)
 	if err = t.Open(); err != nil {
 		log.Errorf("%v: could not open: %v", t.Name, err)
 		return
