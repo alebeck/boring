@@ -75,3 +75,198 @@ func TestSaveInvalidConfigRejected(t *testing.T) {
 		t.Fatal("invalid config must not be written to disk")
 	}
 }
+
+// TestSaveSingleForwardRoundTrip checks that a legacy single-forward tunnel
+// loads, saves, and reloads with its Forwards preserved, and that the saved
+// file uses the legacy local/remote shorthand rather than a [[tunnels.forward]]
+// block (a single-forward config must not be churned into array syntax).
+func TestSaveSingleForwardRoundTrip(t *testing.T) {
+	src := writeConfig(t, `
+[[tunnels]]
+name   = "dev"
+host   = "devhost"
+local  = "9000"
+remote = "localhost:9000"
+`)
+	loaded, err := loadFrom(src)
+	if err != nil {
+		t.Fatalf("initial loadFrom: %v", err)
+	}
+
+	out := filepath.Join(t.TempDir(), ".boring.toml")
+	if err := Save(loaded, out); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("reading saved config: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, `local = "9000"`) ||
+		!strings.Contains(text, `remote = "localhost:9000"`) {
+		t.Fatalf("saved config lost the legacy shorthand:\n%s", text)
+	}
+	if strings.Contains(text, "[[tunnels.forward]]") {
+		t.Fatalf("single-forward tunnel must not be written as a forward block:\n%s", text)
+	}
+
+	reloaded, err := loadFrom(out)
+	if err != nil {
+		t.Fatalf("reload after Save: %v", err)
+	}
+	assertForwardsEqual(t, loaded.Tunnels, reloaded.Tunnels)
+}
+
+// TestSaveMultiForwardRoundTrip checks that a multi-forward tunnel loads,
+// saves, and reloads with its Forwards preserved, and that the saved file uses
+// [[tunnels.forward]] blocks with no tunnel-level local/remote shorthand.
+func TestSaveMultiForwardRoundTrip(t *testing.T) {
+	src := writeConfig(t, `
+[[tunnels]]
+name = "prod"
+host = "bastion"
+user = "deploy"
+
+  [[tunnels.forward]]
+  name   = "db"
+  local  = "5432"
+  remote = "db.internal:5432"
+
+  [[tunnels.forward]]
+  name   = "cache"
+  local  = "6379"
+  remote = "redis.internal:6379"
+  mode   = "local"
+`)
+	loaded, err := loadFrom(src)
+	if err != nil {
+		t.Fatalf("initial loadFrom: %v", err)
+	}
+
+	out := filepath.Join(t.TempDir(), ".boring.toml")
+	if err := Save(loaded, out); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("reading saved config: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "[[tunnels.forward]]") {
+		t.Fatalf("multi-forward tunnel must be written as forward blocks:\n%s", text)
+	}
+	// No tunnel-level shorthand: the only local/remote keys must appear after
+	// the first [[tunnels.forward]] header. A tunnel-level local/remote would
+	// make the file fail to reload (config.Load rejects shorthand + blocks).
+	if hasShorthandBeforeForwardBlock(text) {
+		t.Fatalf("multi-forward tunnel must not write tunnel-level local/remote:\n%s", text)
+	}
+
+	reloaded, err := loadFrom(out)
+	if err != nil {
+		t.Fatalf("reload after Save: %v", err)
+	}
+	assertForwardsEqual(t, loaded.Tunnels, reloaded.Tunnels)
+}
+
+// TestSaveMixedConfigRoundTrip round-trips a config holding both single- and
+// multi-forward tunnels and confirms every tunnel's Forwards survive intact.
+func TestSaveMixedConfigRoundTrip(t *testing.T) {
+	src := writeConfig(t, `
+[[tunnels]]
+name   = "dev"
+host   = "devhost"
+local  = "9000"
+remote = "localhost:9000"
+
+[[tunnels]]
+name = "prod"
+host = "bastion"
+
+  [[tunnels.forward]]
+  name   = "db"
+  local  = "5432"
+  remote = "db.internal:5432"
+
+  [[tunnels.forward]]
+  local  = "6379"
+  remote = "redis.internal:6379"
+
+[[tunnels]]
+name  = "socks"
+host  = "vps"
+local = "1080"
+mode  = "socks"
+`)
+	loaded, err := loadFrom(src)
+	if err != nil {
+		t.Fatalf("initial loadFrom: %v", err)
+	}
+
+	out := filepath.Join(t.TempDir(), ".boring.toml")
+	if err := Save(loaded, out); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("reading saved config: %v", err)
+	}
+	// config.Load rewrites a socks tunnel's tunnel-level RemoteAddress to the
+	// "[SOCKS]" display placeholder; the encoder must encode from Forwards[0]
+	// (the real address) instead, so the placeholder must never reach disk.
+	if strings.Contains(string(data), "[SOCKS]") {
+		t.Fatalf("saved config leaked the [SOCKS] placeholder:\n%s", data)
+	}
+	reloaded, err := loadFrom(out)
+	if err != nil {
+		t.Fatalf("reload after Save: %v", err)
+	}
+	assertForwardsEqual(t, loaded.Tunnels, reloaded.Tunnels)
+}
+
+// assertForwardsEqual fails the test unless want and got describe the same
+// tunnels with identical Forwards (per-forward name/local/remote/mode).
+func assertForwardsEqual(t *testing.T, want, got []tunnel.Desc) {
+	t.Helper()
+	if len(want) != len(got) {
+		t.Fatalf("tunnel count: want %d, got %d", len(want), len(got))
+	}
+	for i := range want {
+		w, g := want[i], got[i]
+		if w.Name != g.Name {
+			t.Fatalf("tunnel[%d] name: want %q, got %q", i, w.Name, g.Name)
+		}
+		if len(w.Forwards) != len(g.Forwards) {
+			t.Fatalf("tunnel %q forward count: want %d, got %d",
+				w.Name, len(w.Forwards), len(g.Forwards))
+		}
+		for j := range w.Forwards {
+			if w.Forwards[j] != g.Forwards[j] {
+				t.Errorf("tunnel %q Forwards[%d]: want %+v, got %+v",
+					w.Name, j, w.Forwards[j], g.Forwards[j])
+			}
+		}
+	}
+}
+
+// hasShorthandBeforeForwardBlock reports whether the saved config assigns a
+// local/remote key before its first [[tunnels.forward]] header. The encoder
+// writes a tunnel's own keys before its forward blocks, so such a key can only
+// be a tunnel-level shorthand assignment.
+func hasShorthandBeforeForwardBlock(text string) bool {
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "[[tunnels.forward]]" {
+			return false
+		}
+		if strings.HasPrefix(trimmed, "local ") ||
+			strings.HasPrefix(trimmed, "local=") ||
+			strings.HasPrefix(trimmed, "remote ") ||
+			strings.HasPrefix(trimmed, "remote=") {
+			return true
+		}
+	}
+	return false
+}
