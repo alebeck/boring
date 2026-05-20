@@ -13,6 +13,13 @@ const (
 	keySpace   = " "
 	keyAdd     = "a"
 	keyEdit    = "e"
+	keyDelete  = "d"
+)
+
+// Confirmation-prompt key bindings, matched against tea.KeyMsg.String().
+const (
+	keyYes = "y"
+	keyNo  = "n"
 )
 
 // Form key bindings, matched against tea.KeyMsg.String().

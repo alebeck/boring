@@ -33,6 +33,9 @@ type dashboard struct {
 	authModal  *authModal       // active auth modal, nil when none is shown
 	authQueue  []authRequestMsg // auth requests waiting for the active modal to finish
 	form       *tunnelForm      // active add/edit form, nil when none is shown
+	// confirmDelete names the tunnel whose delete confirmation is showing;
+	// empty when no confirmation is active.
+	confirmDelete string
 }
 
 // newDashboard builds the initial dashboard from the loaded config.
@@ -70,14 +73,18 @@ func (d dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // routeKey dispatches a keypress: the auth modal takes precedence, then the
-// add/edit form, otherwise the dashboard's own key handling. In practice at
-// most one of {modal, form} is active.
+// add/edit form, then the delete confirmation, otherwise the dashboard's own
+// key handling. In practice at most one of {modal, form, confirmation} is
+// active.
 func (d dashboard) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if d.authModal != nil {
 		return d.updateAuthModal(msg)
 	}
 	if d.form != nil {
 		return d.routeFormKey(msg)
+	}
+	if d.confirmDelete != "" {
+		return d.handleDeleteConfirm(msg)
 	}
 	return d.handleKey(msg)
 }
@@ -211,6 +218,8 @@ func (d dashboard) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return d.openAddForm()
 	case keyEdit:
 		return d.openEditForm()
+	case keyDelete:
+		return d.openDeleteConfirm()
 	}
 	return d, nil
 }
@@ -304,13 +313,82 @@ func (d dashboard) tunnelListWith(desc tunnel.Desc) []tunnel.Desc {
 // applySavedConfig reloads the config after a successful save, closes the form,
 // and reports the saved tunnel in the status bar.
 func (d *dashboard) applySavedConfig(name string) {
+	d.reloadConfig()
+	d.status = "Saved " + name + "."
+	d.form = nil
+}
+
+// openDeleteConfirm opens the delete confirmation for the selected tunnel. It
+// does nothing when there are no rows, and refuses to delete a running tunnel,
+// setting a hint instead — a running tunnel must be stopped first.
+func (d dashboard) openDeleteConfirm() (tea.Model, tea.Cmd) {
+	if len(d.rows) == 0 {
+		return d, nil
+	}
+	name := d.rows[d.cursor].Name
+	if d.selectedIsRunning() {
+		d.status = "Stop " + name + " before deleting it."
+		return d, nil
+	}
+	d.confirmDelete = name
+	return d, nil
+}
+
+// handleDeleteConfirm routes a keypress while the delete confirmation is shown:
+// y/enter performs the delete, n/esc cancels it, any other key is ignored.
+func (d dashboard) handleDeleteConfirm(k tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch k.String() {
+	case keyYes, keyEnter:
+		return d.performDelete()
+	case keyNo, keyEsc:
+		d.confirmDelete = ""
+		return d, nil
+	default:
+		return d, nil
+	}
+}
+
+// performDelete removes the pending tunnel from the config: build the new list,
+// validate it, write the config, and reload it. Any error sets a status message
+// and closes the confirmation; a success reports the deletion and refreshes.
+func (d dashboard) performDelete() (tea.Model, tea.Cmd) {
+	name := d.confirmDelete
+	d.confirmDelete = ""
+	newList := d.tunnelListWithout(name)
+	if err := config.Validate(newList); err != nil {
+		d.status = fmt.Sprintf("delete %s failed: %v", name, err)
+		return d, nil
+	}
+	cfg := &config.Config{Tunnels: newList, KeepAlive: d.keepAlive}
+	if err := config.Save(cfg, config.Path); err != nil {
+		d.status = fmt.Sprintf("delete %s failed: %v", name, err)
+		return d, nil
+	}
+	d.reloadConfig()
+	d.status = "Deleted " + name + "."
+	return d, pollTunnels()
+}
+
+// tunnelListWithout returns a copy of the configured tunnels with the entry
+// named name removed.
+func (d dashboard) tunnelListWithout(name string) []tunnel.Desc {
+	newList := make([]tunnel.Desc, 0, len(d.configured))
+	for i := range d.configured {
+		if d.configured[i].Name != name {
+			newList = append(newList, d.configured[i])
+		}
+	}
+	return newList
+}
+
+// reloadConfig reloads the config from disk after a successful write, so the
+// dashboard reflects exactly what was persisted.
+func (d *dashboard) reloadConfig() {
 	if conf, err := config.Load(); err == nil {
 		d.configured = conf.Tunnels
 		d.keepAlive = conf.KeepAlive
 		d.rows = tunnel.Order(d.configured, d.running)
 	}
-	d.status = "Saved " + name + "."
-	d.form = nil
 }
 
 // toggleSelected opens the selected tunnel if it is not running, or closes it

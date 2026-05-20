@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/alebeck/boring/internal/tunnel"
@@ -34,6 +35,8 @@ func (d dashboard) View() string {
 		b.WriteString(d.authModalView())
 	case d.form != nil:
 		b.WriteString(d.form.View())
+	case d.confirmDelete != "":
+		b.WriteString(d.deleteConfirmView())
 	case d.showHelp:
 		b.WriteString(helpView())
 	default:
@@ -54,6 +57,17 @@ func (d dashboard) authModalView() string {
 			lipgloss.Center, lipgloss.Center, modal)
 	}
 	return modal
+}
+
+// deleteConfirmView renders the delete confirmation box, centered when the
+// window size is known.
+func (d dashboard) deleteConfirmView() string {
+	box := confirmView(fmt.Sprintf("Delete tunnel %q?", d.confirmDelete))
+	if d.width > 0 && d.height > 0 {
+		return lipgloss.Place(d.width, lipgloss.Height(box),
+			lipgloss.Center, lipgloss.Center, box)
+	}
+	return box
 }
 
 // cells returns the raw (unstyled) cell text for one tunnel row.
@@ -140,7 +154,7 @@ func renderRow(t *tunnel.Desc, widths []int, selected bool) string {
 func (d dashboard) statusBar() string {
 	if d.status == "" {
 		return statusBarStyle.Render(
-			"j/k move · enter open/close · a add · e edit · ? help · q quit")
+			"j/k move · enter open/close · a add · e edit · d delete · ? help · q quit")
 	}
 	if strings.HasPrefix(d.status, daemonUnavailablePrefix) {
 		return errStyle.Render(d.status)
@@ -158,6 +172,7 @@ func helpView() string {
 		"  space    open/close selected tunnel",
 		"  a        add a new tunnel",
 		"  e        edit the selected tunnel",
+		"  d        delete the selected tunnel",
 		"  ?        toggle this help",
 		"  q        quit",
 		"  ctrl+c   quit",

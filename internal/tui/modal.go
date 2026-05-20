@@ -68,3 +68,12 @@ func (m authModal) View() string {
 	b.WriteString(dimStyle.Render("enter submit · esc cancel"))
 	return modalStyle.Render(b.String())
 }
+
+// confirmView renders a bordered yes/no confirmation box showing message.
+func confirmView(message string) string {
+	var b strings.Builder
+	b.WriteString(message)
+	b.WriteString("\n\n")
+	b.WriteString(dimStyle.Render("y / n"))
+	return modalStyle.Render(b.String())
+}
