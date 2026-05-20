@@ -42,15 +42,19 @@ type Desc struct {
 // Tunnel is a representation internal to the tunnel and daemon packages,
 // describing a tunnel that is running or about to be run.
 type Tunnel struct {
-	prepared   bool
-	hops       []ssh_config.Hop
-	Closed     chan struct{}
-	stop       chan struct{}
-	listener   net.Listener
-	wg         sync.WaitGroup
-	client     *ssh.Client
-	localAddr  *address
-	remoteAddr *address
+	prepared bool
+	// interactive records that the tunnel authenticated via keyboard-interactive
+	// (2FA), so it must not be silently auto-reconnected: a fresh code is required
+	// and the daemon cannot prompt non-interactively.
+	interactive bool
+	hops        []ssh_config.Hop
+	Closed      chan struct{}
+	stop        chan struct{}
+	listener    net.Listener
+	wg          sync.WaitGroup
+	client      *ssh.Client
+	localAddr   *address
+	remoteAddr  *address
 	*Desc
 }
 
@@ -233,7 +237,7 @@ func (t *Tunnel) run() {
 	}
 	t.listener.Close()
 	t.wg.Wait()
-	if !stopped {
+	if t.shouldReconnect(stopped) {
 		if err := t.reconnectLoop(); err != nil {
 			log.Errorf("%v: could not re-connect: %v", t.Name, err)
 		} else {
@@ -241,8 +245,25 @@ func (t *Tunnel) run() {
 			return
 		}
 	}
-	t.Status = Closed
+	t.Status = t.finalStatus(stopped)
 	close(t.Closed)
+}
+
+// shouldReconnect reports whether run() should attempt reconnection after an
+// unexpected disconnect. Interactive (2FA) tunnels cannot: a fresh code is
+// required and the daemon cannot prompt non-interactively.
+func (t *Tunnel) shouldReconnect(stopped bool) bool {
+	return !stopped && !t.interactive
+}
+
+// finalStatus is the status a tunnel rests at once run() exits without
+// reconnecting: NeedsAuth for an interactive tunnel that dropped unexpectedly
+// (it needs the user to re-authenticate), Closed otherwise.
+func (t *Tunnel) finalStatus(stopped bool) Status {
+	if !stopped && t.interactive {
+		return NeedsAuth
+	}
+	return Closed
 }
 
 func (t *Tunnel) keepAlive(cancel chan struct{}) {
