@@ -23,6 +23,9 @@ func Write(s any, w io.Writer) error {
 	return nil
 }
 
+// Read decodes one newline-delimited JSON message into s. To read several
+// messages from one connection, pass the SAME *bufio.Reader to every call;
+// a raw net.Conn would lose bytes buffered past the first newline.
 func Read(s any, r io.Reader) error {
 	br := bufio.NewReader(r)
 	data, err := br.ReadBytes('\n')
