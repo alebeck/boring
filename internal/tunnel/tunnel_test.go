@@ -1,8 +1,11 @@
 package tunnel
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
+	"github.com/BurntSushi/toml"
 	"github.com/alebeck/boring/internal/auth"
 )
 
@@ -103,5 +106,27 @@ func TestInteractivePrompterTracksKeyboardInteractive(t *testing.T) {
 	}
 	if !tn.interactive {
 		t.Fatal("keyboard-interactive challenge did not mark tunnel interactive")
+	}
+}
+
+func TestDescOmitsEmptyOptionalFields(t *testing.T) {
+	var buf bytes.Buffer
+	d := Desc{
+		Name: "dev", Host: "h", Mode: Local,
+		LocalAddress: "9000", RemoteAddress: "localhost:9000",
+	}
+	if err := toml.NewEncoder(&buf).Encode(d); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	got := buf.String()
+	for _, field := range []string{"user", "identity", "port", "keep_alive", "group"} {
+		if strings.Contains(got, field+" =") {
+			t.Errorf("optional empty field %q should be omitted; got:\n%s", field, got)
+		}
+	}
+	for _, field := range []string{"name", "host", "mode", "local", "remote"} {
+		if !strings.Contains(got, field+" =") {
+			t.Errorf("required field %q must be present; got:\n%s", field, got)
+		}
 	}
 }

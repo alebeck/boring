@@ -30,14 +30,17 @@ type Desc struct {
 	LocalAddress  StringOrInt `toml:"local" json:"local"`
 	RemoteAddress StringOrInt `toml:"remote" json:"remote"`
 	Host          string      `toml:"host" json:"host"`
-	User          string      `toml:"user" json:"user"`
-	IdentityFile  string      `toml:"identity" json:"identity"`
-	Port          int         `toml:"port" json:"port"`
-	KeepAlive     *int        `toml:"keep_alive" json:"keep_alive"`
-	Group         string      `toml:"group" json:"group"`
-	Mode          Mode        `toml:"mode" json:"mode"`
-	Status        Status      `toml:"-" json:"status"`
-	LastConn      time.Time   `toml:"-" json:"last_conn"`
+	User          string      `toml:"user,omitempty" json:"user"`
+	IdentityFile  string      `toml:"identity,omitempty" json:"identity"`
+	// Port is a pointer so an unset port is omitted from written TOML.
+	// BurntSushi/toml's omitempty does not skip numeric zero values, so a
+	// plain int field of 0 would still be written as "port = 0".
+	Port      *int      `toml:"port,omitempty" json:"port"`
+	KeepAlive *int      `toml:"keep_alive,omitempty" json:"keep_alive"`
+	Group     string    `toml:"group,omitempty" json:"group"`
+	Mode      Mode      `toml:"mode" json:"mode"`
+	Status    Status    `toml:"-" json:"status"`
+	LastConn  time.Time `toml:"-" json:"last_conn"`
 }
 
 // Tunnel is a representation internal to the tunnel and daemon packages,
@@ -141,8 +144,8 @@ func (t *Tunnel) prepare() error {
 	if t.User != "" {
 		sc.User = t.User
 	}
-	if t.Port != 0 {
-		sc.Port = t.Port
+	if t.Port != nil {
+		sc.Port = *t.Port
 	}
 	if t.IdentityFile != "" {
 		sc.IdentityFiles = []string{t.IdentityFile}

@@ -15,9 +15,12 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// ptr returns a pointer to i, for building *int fields in tests.
+func ptr(i int) *int { return &i }
+
 func TestConnectionUnreachable(t *testing.T) {
 	d := &Desc{
-		Name: "x", Host: "127.0.0.1", Port: 1, Mode: Local,
+		Name: "x", Host: "127.0.0.1", Port: ptr(1), Mode: Local,
 		LocalAddress: "9000", RemoteAddress: "localhost:9000",
 	}
 	res := TestConnection(d, nil)
