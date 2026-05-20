@@ -66,6 +66,29 @@ type address struct {
 	addr, net string
 }
 
+// interactivePrompter wraps a Prompter and records on the tunnel when a
+// keyboard-interactive (2FA) challenge is answered, as distinct from a
+// key-passphrase prompt. A tunnel that authenticated with 2FA cannot be
+// silently auto-reconnected, since a fresh code is required each time.
+//
+// The two are told apart by the prompt name: a server-supplied
+// keyboard-interactive challenge that happens to be named exactly
+// auth.PassphrasePromptName would be misclassified as a passphrase prompt.
+// That edge case is a deliberate, benign trade-off — the only consequence is
+// a blind reconnect attempt that fails auth rather than resting at NeedsAuth.
+type interactivePrompter struct {
+	inner  auth.Prompter
+	tunnel *Tunnel
+}
+
+func (p *interactivePrompter) Prompt(name, instruction string,
+	questions []string, echo []bool) ([]string, error) {
+	if name != auth.PassphrasePromptName {
+		p.tunnel.interactive = true
+	}
+	return p.inner.Prompt(name, instruction, questions, echo)
+}
+
 func FromDesc(desc *Desc) *Tunnel {
 	return &Tunnel{Desc: desc}
 }
@@ -126,8 +149,14 @@ func (t *Tunnel) prepare() error {
 	sc.EnsureUser()
 
 	// Infer series of hops from ssh config. The tunnel's prompter (which may be
-	// nil for non-interactive use) reaches SSH auth through here.
-	if t.hops, err = sc.ToHops(t.prompter); err != nil {
+	// nil for non-interactive use) reaches SSH auth through here. It is wrapped
+	// so that answering a keyboard-interactive (2FA) challenge marks the tunnel
+	// interactive, which suppresses blind auto-reconnect.
+	var prompter auth.Prompter
+	if t.prompter != nil {
+		prompter = &interactivePrompter{inner: t.prompter, tunnel: t}
+	}
+	if t.hops, err = sc.ToHops(prompter); err != nil {
 		return err
 	}
 

@@ -19,9 +19,14 @@ func (f FuncPrompter) Prompt(name, instruction string, questions []string, echo 
 	return f(name, instruction, questions, echo)
 }
 
+// PassphrasePromptName is the prompt name used for private-key passphrase
+// requests. It distinguishes them from SSH keyboard-interactive (2FA)
+// challenges, which carry the server-supplied name.
+const PassphrasePromptName = "passphrase"
+
 // Passphrase is a convenience helper: a single hidden question.
 func Passphrase(p Prompter, keyPath string) (string, error) {
-	ans, err := p.Prompt("passphrase", "",
+	ans, err := p.Prompt(PassphrasePromptName, "",
 		[]string{"Enter passphrase for " + keyPath + ": "}, []bool{false})
 	if err != nil {
 		return "", fmt.Errorf("failed to prompt passphrase for %s: %w", keyPath, err)

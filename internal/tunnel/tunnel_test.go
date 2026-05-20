@@ -1,6 +1,10 @@
 package tunnel
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/alebeck/boring/internal/auth"
+)
 
 func TestShouldReconnect(t *testing.T) {
 	cases := []struct {
@@ -43,5 +47,29 @@ func TestFinalStatus(t *testing.T) {
 				t.Fatalf("finalStatus(stopped=%v) = %v, want %v", c.stopped, got, c.want)
 			}
 		})
+	}
+}
+
+func TestInteractivePrompterTracksKeyboardInteractive(t *testing.T) {
+	tn := &Tunnel{Desc: &Desc{Name: "x"}}
+	inner := auth.FuncPrompter(func(_, _ string, _ []string, _ []bool) ([]string, error) {
+		return []string{"answer"}, nil
+	})
+	p := &interactivePrompter{inner: inner, tunnel: tn}
+
+	// A passphrase prompt must NOT mark the tunnel interactive.
+	if _, err := p.Prompt(auth.PassphrasePromptName, "", []string{"Passphrase:"}, []bool{false}); err != nil {
+		t.Fatal(err)
+	}
+	if tn.interactive {
+		t.Fatal("passphrase prompt wrongly marked tunnel interactive")
+	}
+
+	// A keyboard-interactive (2FA) challenge must mark it interactive.
+	if _, err := p.Prompt("", "2FA", []string{"Code:"}, []bool{false}); err != nil {
+		t.Fatal(err)
+	}
+	if !tn.interactive {
+		t.Fatal("keyboard-interactive challenge did not mark tunnel interactive")
 	}
 }

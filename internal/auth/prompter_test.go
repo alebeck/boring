@@ -55,3 +55,17 @@ func TestPassphrase(t *testing.T) {
 		}
 	})
 }
+
+func TestPassphraseUsesReservedName(t *testing.T) {
+	var gotName string
+	p := FuncPrompter(func(name, _ string, _ []string, _ []bool) ([]string, error) {
+		gotName = name
+		return []string{"x"}, nil
+	})
+	if _, err := Passphrase(p, "/key"); err != nil {
+		t.Fatal(err)
+	}
+	if gotName != PassphrasePromptName {
+		t.Fatalf("Passphrase used name %q, want %q", gotName, PassphrasePromptName)
+	}
+}
