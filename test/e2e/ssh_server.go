@@ -14,10 +14,15 @@ import (
 
 const (
 	loopBack          = "127.0.0.1:58391"
+	loopBack2FA       = "127.0.0.1:58392"
 	hostKeyFile       = "../testdata/keys/server"
 	authorizedKeyFile = "../testdata/keys/client.pub"
 	caKeyFile         = "../testdata/keys/ca.pub"
 	caPrivKeyFile     = "../testdata/keys/ca"
+
+	// test2FACode is the fixed keyboard-interactive code accepted by the
+	// 2FA test server.
+	test2FACode = "123456"
 )
 
 type tcpipForwardRequest struct {
@@ -57,6 +62,7 @@ func keysEqual(a, b ssh.PublicKey) bool {
 type sshServer struct {
 	config   *ssh.ServerConfig
 	listener net.Listener
+	addr     string
 	mu       sync.Mutex
 	conns    map[net.Conn]struct{}
 
@@ -70,7 +76,75 @@ type sshServer struct {
 	keepAlives  int
 }
 
-func startServer() (s *sshServer, err error) {
+// publicKeyAuth configures cfg to authenticate clients via public keys and
+// host certificates signed by the test CA.
+func publicKeyAuth(cfg *ssh.ServerConfig) error {
+	authorized, err := loadAuthorizedKey(authorizedKeyFile)
+	if err != nil {
+		return fmt.Errorf("failed to load authorized key: %w", err)
+	}
+
+	caPub, err := loadAuthorizedKey(caKeyFile)
+	if err != nil {
+		return fmt.Errorf("failed to load CA key: %w", err)
+	}
+
+	checker := &ssh.CertChecker{
+		IsUserAuthority: func(k ssh.PublicKey) bool {
+			return keysEqual(k, caPub)
+		},
+		// allow fallback to raw public keys
+		UserKeyFallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+			if conn.User() == "needs-cert" {
+				return nil, fmt.Errorf("certificate required")
+			}
+			if keysEqual(key, authorized) {
+				return nil, nil
+			}
+			return nil, fmt.Errorf("unauthorized")
+		},
+	}
+
+	cfg.PublicKeyCallback = checker.Authenticate
+	return nil
+}
+
+// keyboardInteractiveAuth configures cfg to authenticate clients via a
+// keyboard-interactive (2FA) challenge expecting the fixed test2FACode.
+func keyboardInteractiveAuth(cfg *ssh.ServerConfig) error {
+	cfg.KeyboardInteractiveCallback = func(
+		conn ssh.ConnMetadata, client ssh.KeyboardInteractiveChallenge,
+	) (*ssh.Permissions, error) {
+		answers, err := client("", "", []string{"2FA code: "}, []bool{false})
+		if err != nil {
+			return nil, fmt.Errorf("challenge failed: %w", err)
+		}
+		if len(answers) != 1 || answers[0] != test2FACode {
+			return nil, fmt.Errorf("invalid 2FA code")
+		}
+		return &ssh.Permissions{}, nil
+	}
+	return nil
+}
+
+// startServer starts the public-key test SSH server on the default address.
+func startServer() (*sshServer, error) {
+	return startServerWith(loopBack, publicKeyAuth)
+}
+
+// startServer2FA starts a keyboard-interactive (2FA) test SSH server on the
+// dedicated 2FA address. It shares the listener setup, host-key loading,
+// accept loop, and connection handling with the public-key server, differing
+// only in how the ssh.ServerConfig's auth is configured.
+func startServer2FA() (*sshServer, error) {
+	return startServerWith(loopBack2FA, keyboardInteractiveAuth)
+}
+
+// startServerWith builds and starts an in-process SSH server on addr. The
+// configureAuth callback sets up the authentication method on the shared
+// ssh.ServerConfig (host keys are added afterwards, identically for every
+// variant).
+func startServerWith(addr string, configureAuth func(*ssh.ServerConfig) error) (s *sshServer, err error) {
 	hostKey, err := loadHostKey(hostKeyFile)
 	if err != nil {
 		return nil, err
@@ -94,35 +168,10 @@ func startServer() (s *sshServer, err error) {
 		return nil, err
 	}
 
-	authorized, err := loadAuthorizedKey(authorizedKeyFile)
-	if err != nil {
-		return nil, err
-	}
-
-	caPub, err := loadAuthorizedKey(caKeyFile)
-	if err != nil {
-		return nil, err
-	}
-
-	checker := &ssh.CertChecker{
-		IsUserAuthority: func(k ssh.PublicKey) bool {
-			return keysEqual(k, caPub)
-		},
-		// allow fallback to raw public keys
-		UserKeyFallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
-			if conn.User() == "needs-cert" {
-				return nil, fmt.Errorf("certificate required")
-			}
-			if keysEqual(key, authorized) {
-				return nil, nil
-			}
-			return nil, fmt.Errorf("unauthorized")
-		},
-	}
-
-	s = &sshServer{}
-	s.config = &ssh.ServerConfig{
-		PublicKeyCallback: checker.Authenticate,
+	s = &sshServer{addr: addr}
+	s.config = &ssh.ServerConfig{}
+	if err := configureAuth(s.config); err != nil {
+		return nil, fmt.Errorf("failed to configure auth: %w", err)
 	}
 
 	s.conns = make(map[net.Conn]struct{})
@@ -132,7 +181,7 @@ func startServer() (s *sshServer, err error) {
 	s.config.AddHostKey(hostKey)
 	s.config.AddHostKey(certSigner)
 
-	s.listener, err = net.Listen("tcp", loopBack)
+	s.listener, err = net.Listen("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen for connection: %v", err)
 	}
@@ -290,7 +339,7 @@ func (s *sshServer) resume() {
 	// reset the deadline to allow new connections
 	//_ = s.listener.(*net.TCPListener).SetDeadline(time.Time{})
 	var err error
-	s.listener, err = net.Listen("tcp", loopBack)
+	s.listener, err = net.Listen("tcp", s.addr)
 	if err != nil {
 		panic("failed to listen for connection")
 	}
