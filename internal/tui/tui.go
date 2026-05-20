@@ -18,6 +18,12 @@ func Run(conf *config.Config) (err error) {
 			err = fmt.Errorf("tui panic: %v", r)
 		}
 	}()
-	_, err = tea.NewProgram(newDashboard(conf), tea.WithAltScreen()).Run()
+	prompter := &tuiPrompter{}
+	p := tea.NewProgram(newDashboard(conf, prompter), tea.WithAltScreen())
+	// Safe to set send now: nothing can call Prompt until the program runs,
+	// and tea.NewProgram copies the dashboard value but shares the prompter
+	// pointer, so the running model sees this assignment.
+	prompter.send = p.Send
+	_, err = p.Run()
 	return err
 }

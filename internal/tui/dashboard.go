@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -9,6 +8,7 @@ import (
 	"github.com/alebeck/boring/internal/auth"
 	"github.com/alebeck/boring/internal/config"
 	"github.com/alebeck/boring/internal/tunnel"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -28,11 +28,14 @@ type dashboard struct {
 	showHelp   bool
 	width      int
 	height     int
+	prompter   *tuiPrompter     // relays interactive auth prompts to the modal
+	authModal  *authModal       // active auth modal, nil when none is shown
+	authQueue  []authRequestMsg // auth requests waiting for the active modal to finish
 }
 
 // newDashboard builds the initial dashboard from the loaded config.
-func newDashboard(conf *config.Config) dashboard {
-	d := dashboard{configured: conf.Tunnels}
+func newDashboard(conf *config.Config, prompter *tuiPrompter) dashboard {
+	d := dashboard{configured: conf.Tunnels, prompter: prompter}
 	d.rows = tunnel.Order(d.configured, nil)
 	return d
 }
@@ -52,10 +55,94 @@ func (d dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return d, pollTunnels()
 	case actionResultMsg:
 		return d.handleActionResult(msg)
+	case authRequestMsg:
+		return d.handleAuthRequest(msg)
 	case tea.KeyMsg:
+		if d.authModal != nil {
+			return d.updateAuthModal(msg)
+		}
 		return d.handleKey(msg)
 	}
 	return d, nil
+}
+
+// handleAuthRequest shows a new auth modal, or queues the request behind the
+// one already on screen so modals are answered one at a time.
+func (d dashboard) handleAuthRequest(msg authRequestMsg) (tea.Model, tea.Cmd) {
+	if d.authModal == nil {
+		am := newAuthModal(msg)
+		d.authModal = &am
+	} else {
+		d.authQueue = append(d.authQueue, msg)
+	}
+	return d, textinput.Blink
+}
+
+// updateAuthModal routes a keypress to the active auth modal: ctrl+c aborts
+// every pending request and quits, esc aborts the active request, enter submits
+// the current answer (and advances to the next question or resolves the
+// request), any other key edits the text input.
+func (d dashboard) updateAuthModal(k tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch k.Type {
+	case tea.KeyCtrlC:
+		d.abortAllAuth()
+		return d, tea.Quit
+	case tea.KeyEsc:
+		d.authModal.req.reply <- authReply{err: auth.ErrAborted}
+		d.advanceAuthQueue()
+		return d, textinput.Blink
+	case tea.KeyEnter:
+		return d.submitAuthAnswer()
+	default:
+		m := *d.authModal
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(k)
+		d.authModal = &m
+		return d, cmd
+	}
+}
+
+// submitAuthAnswer records the current answer; once every question is answered
+// it sends the reply and advances the queue, otherwise it moves to the next
+// question on the same modal.
+func (d dashboard) submitAuthAnswer() (tea.Model, tea.Cmd) {
+	m := *d.authModal
+	m.answers = append(m.answers, m.input.Value())
+	m.idx++
+	if m.idx >= len(m.req.questions) {
+		m.req.reply <- authReply{answers: m.answers}
+		d.authModal = &m
+		d.advanceAuthQueue()
+		return d, textinput.Blink
+	}
+	m.configureInput()
+	d.authModal = &m
+	return d, textinput.Blink
+}
+
+// abortAllAuth resolves every pending auth request — the open modal and all
+// queued ones — with ErrAborted, so command goroutines blocked in
+// tuiPrompter.Prompt unblock cleanly. Each reply channel is cap-1 and
+// unreplied here, so the sends never block.
+func (d dashboard) abortAllAuth() {
+	if d.authModal != nil {
+		d.authModal.req.reply <- authReply{err: auth.ErrAborted}
+	}
+	for _, req := range d.authQueue {
+		req.reply <- authReply{err: auth.ErrAborted}
+	}
+}
+
+// advanceAuthQueue closes the finished modal and opens the next queued request,
+// if any.
+func (d *dashboard) advanceAuthQueue() {
+	if len(d.authQueue) > 0 {
+		next := newAuthModal(d.authQueue[0])
+		d.authQueue = d.authQueue[1:]
+		d.authModal = &next
+		return
+	}
+	d.authModal = nil
 }
 
 // handleActionResult records an open/close outcome and refreshes the table.
@@ -87,6 +174,7 @@ func (d dashboard) handleTunnels(msg tunnelsMsg) (tea.Model, tea.Cmd) {
 func (d dashboard) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch k.String() {
 	case keyQuit, keyCtrlC:
+		d.abortAllAuth()
 		return d, tea.Quit
 	case keyHelp:
 		d.showHelp = !d.showHelp
@@ -119,7 +207,7 @@ func (d dashboard) toggleSelected() (tea.Model, tea.Cmd) {
 		return d, closeTunnelCmd(name)
 	}
 	d.status = "Opening " + name + "..."
-	return d, openTunnelCmd(*d.rows[d.cursor], tuiOpenPrompter())
+	return d, openTunnelCmd(*d.rows[d.cursor], d.prompter)
 }
 
 // selectedIsRunning reports whether the tunnel under the cursor is running.
@@ -129,16 +217,6 @@ func (d dashboard) selectedIsRunning() bool {
 	}
 	_, ok := d.running[d.rows[d.cursor].Name]
 	return ok
-}
-
-// tuiOpenPrompter returns the prompter used for TUI-initiated opens. It is a
-// placeholder that fails any interactive auth request with a clear message;
-// pubkey/agent tunnels never invoke it and open fine. A real modal-backed
-// prompter replaces this in a later task.
-func tuiOpenPrompter() auth.Prompter {
-	return auth.FuncPrompter(func(_, _ string, _ []string, _ []bool) ([]string, error) {
-		return nil, errors.New("interactive authentication is not available in the TUI yet")
-	})
 }
 
 // clampCursor keeps the cursor within the current row range.

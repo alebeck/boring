@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/alebeck/boring/internal/auth"
 	"github.com/alebeck/boring/internal/config"
 	"github.com/alebeck/boring/internal/tunnel"
 	tea "github.com/charmbracelet/bubbletea"
@@ -29,7 +31,7 @@ func dashboardWithRows(names ...string) dashboard {
 	for i, n := range names {
 		descs[i] = tunnel.Desc{Name: n, Host: "example.com"}
 	}
-	return newDashboard(&config.Config{Tunnels: descs})
+	return newDashboard(&config.Config{Tunnels: descs}, &tuiPrompter{})
 }
 
 func TestDashboardQuitsOnQ(t *testing.T) {
@@ -146,7 +148,7 @@ func TestDashboardViewContainsTunnelName(t *testing.T) {
 }
 
 func TestDashboardViewEmpty(t *testing.T) {
-	d := newDashboard(&config.Config{})
+	d := newDashboard(&config.Config{}, &tuiPrompter{})
 	out := d.View()
 	if !strings.Contains(out, "No tunnels configured.") {
 		t.Fatalf("empty view should show placeholder, got:\n%s", out)
@@ -189,7 +191,7 @@ func TestSelectedIsRunning(t *testing.T) {
 		t.Fatal("prod is running, selectedIsRunning should be true")
 	}
 
-	empty := newDashboard(&config.Config{})
+	empty := newDashboard(&config.Config{}, &tuiPrompter{})
 	if empty.selectedIsRunning() {
 		t.Fatal("empty dashboard should report false")
 	}
@@ -212,6 +214,33 @@ func TestActionResultUpdatesStatus(t *testing.T) {
 	}
 	if got := m.(dashboard).status; !strings.Contains(got, "Opened dev failed") {
 		t.Fatalf("error status = %q, want it to mention the failure", got)
+	}
+}
+
+func TestCtrlCInModalAbortsPendingAuth(t *testing.T) {
+	// One active modal + one queued request, each with its own cap-1 channel.
+	req1 := authRequestMsg{questions: []string{"Code:"}, echo: []bool{false}, reply: make(chan authReply, 1)}
+	req2 := authRequestMsg{questions: []string{"Code:"}, echo: []bool{false}, reply: make(chan authReply, 1)}
+	d := dashboardWithRows("a")
+	m, _ := d.Update(req1)
+	m, _ = m.(dashboard).Update(req2)
+	d = m.(dashboard)
+	if d.authModal == nil || len(d.authQueue) != 1 {
+		t.Fatalf("setup: modal=%v queue=%d", d.authModal != nil, len(d.authQueue))
+	}
+	_, cmd := d.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if !isQuit(cmd) {
+		t.Fatal("ctrl+c in a modal should quit")
+	}
+	for i, ch := range []chan authReply{req1.reply, req2.reply} {
+		select {
+		case r := <-ch:
+			if !errors.Is(r.err, auth.ErrAborted) {
+				t.Fatalf("request %d: got err %v, want ErrAborted", i, r.err)
+			}
+		default:
+			t.Fatalf("request %d: no reply sent on quit", i)
+		}
 	}
 }
 

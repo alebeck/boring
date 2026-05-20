@@ -13,6 +13,11 @@ var (
 	dimStyle       = lipgloss.NewStyle().Faint(true)
 	statusBarStyle = lipgloss.NewStyle().Faint(true)
 	errStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	modalStyle     = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			Padding(1, 2).
+			Width(56) // wrap server-controlled instruction/question text
+	modalTitleStyle = lipgloss.NewStyle().Bold(true)
 )
 
 // statusStyles maps a tunnel status to the style used for its label.

@@ -75,6 +75,9 @@ func openTunnelCmd(desc tunnel.Desc, prompter auth.Prompter) tea.Cmd {
 			return actionResultMsg{verb: "Opened", name: desc.Name, err: err}
 		}
 		defer conn.Close()
+		// No SetDeadline here: an interactive open blocks on the user typing
+		// a 2FA code / passphrase, which is human-paced. A clean quit is
+		// handled instead by draining pending auth requests (abortAllAuth).
 		resp, err := daemon.RunOpenExchange(conn, daemon.Cmd{Kind: daemon.Open, Tunnel: desc}, prompter)
 		if err == nil && resp != nil && !resp.Success {
 			err = fmt.Errorf("%s", resp.Error)

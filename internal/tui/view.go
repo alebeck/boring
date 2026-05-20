@@ -29,7 +29,9 @@ func (d dashboard) View() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("boring"))
 	b.WriteString("\n\n")
-	if d.showHelp {
+	if d.authModal != nil {
+		b.WriteString(d.authModalView())
+	} else if d.showHelp {
 		b.WriteString(helpView())
 	} else {
 		b.WriteString(d.tableView())
@@ -38,6 +40,17 @@ func (d dashboard) View() string {
 	b.WriteString(d.statusBar())
 	b.WriteString("\n")
 	return b.String()
+}
+
+// authModalView renders the active auth modal, centered when the window size
+// is known.
+func (d dashboard) authModalView() string {
+	modal := d.authModal.View()
+	if d.width > 0 && d.height > 0 {
+		return lipgloss.Place(d.width, lipgloss.Height(modal),
+			lipgloss.Center, lipgloss.Center, modal)
+	}
+	return modal
 }
 
 // cells returns the raw (unstyled) cell text for one tunnel row.
