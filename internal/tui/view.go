@@ -123,7 +123,7 @@ func renderRow(t *tunnel.Desc, widths []int, selected bool) string {
 // statusBar renders the bottom bar: a status message, or a key hint.
 func (d dashboard) statusBar() string {
 	if d.status == "" {
-		return statusBarStyle.Render("j/k move · ? help · q quit")
+		return statusBarStyle.Render("j/k move · enter open/close · ? help · q quit")
 	}
 	if strings.HasPrefix(d.status, daemonUnavailablePrefix) {
 		return errStyle.Render(d.status)
@@ -137,6 +137,8 @@ func helpView() string {
 		"Keys:",
 		"  up/k     move cursor up",
 		"  down/j   move cursor down",
+		"  enter    open/close selected tunnel",
+		"  space    open/close selected tunnel",
 		"  ?        toggle this help",
 		"  q        quit",
 		"  ctrl+c   quit",

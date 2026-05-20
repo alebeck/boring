@@ -9,4 +9,6 @@ const (
 	keyVimUp   = "k"
 	keyVimDown = "j"
 	keyHelp    = "?"
+	keyEnter   = "enter"
+	keySpace   = " "
 )

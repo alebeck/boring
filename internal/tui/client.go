@@ -5,6 +5,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/alebeck/boring/internal/auth"
 	"github.com/alebeck/boring/internal/daemon"
 	"github.com/alebeck/boring/internal/ipc"
 	"github.com/alebeck/boring/internal/tunnel"
@@ -56,4 +57,51 @@ func listRunning() (map[string]*tunnel.Desc, error) {
 		m[name] = &d
 	}
 	return m, nil
+}
+
+// actionResultMsg is the outcome of an open or close action.
+type actionResultMsg struct {
+	verb string // "Opened" or "Closed"
+	name string
+	err  error
+}
+
+// openTunnelCmd returns a command that asks the daemon to open desc, using
+// prompter for any interactive auth.
+func openTunnelCmd(desc tunnel.Desc, prompter auth.Prompter) tea.Cmd {
+	return func() tea.Msg {
+		conn, err := net.DialTimeout("unix", daemon.Socket, pollTimeout)
+		if err != nil {
+			return actionResultMsg{verb: "Opened", name: desc.Name, err: err}
+		}
+		defer conn.Close()
+		resp, err := daemon.RunOpenExchange(conn, daemon.Cmd{Kind: daemon.Open, Tunnel: desc}, prompter)
+		if err == nil && resp != nil && !resp.Success {
+			err = fmt.Errorf("%s", resp.Error)
+		}
+		return actionResultMsg{verb: "Opened", name: desc.Name, err: err}
+	}
+}
+
+// closeTunnelCmd returns a command that asks the daemon to close the named tunnel.
+func closeTunnelCmd(name string) tea.Cmd {
+	return func() tea.Msg {
+		conn, err := net.DialTimeout("unix", daemon.Socket, pollTimeout)
+		if err != nil {
+			return actionResultMsg{verb: "Closed", name: name, err: err}
+		}
+		defer conn.Close()
+		_ = conn.SetDeadline(time.Now().Add(pollTimeout))
+		if err := ipc.Write(daemon.Cmd{Kind: daemon.Close, Tunnel: tunnel.Desc{Name: name}}, conn); err != nil {
+			return actionResultMsg{verb: "Closed", name: name, err: err}
+		}
+		var resp daemon.Resp
+		if err := ipc.Read(&resp, conn); err != nil {
+			return actionResultMsg{verb: "Closed", name: name, err: err}
+		}
+		if !resp.Success {
+			return actionResultMsg{verb: "Closed", name: name, err: fmt.Errorf("%s", resp.Error)}
+		}
+		return actionResultMsg{verb: "Closed", name: name}
+	}
 }

@@ -176,6 +176,45 @@ func TestStatusText(t *testing.T) {
 	}
 }
 
+func TestSelectedIsRunning(t *testing.T) {
+	d := dashboardWithRows("dev", "prod")
+	d.running = map[string]*tunnel.Desc{"prod": {Name: "prod"}}
+
+	d.cursor = 0
+	if d.selectedIsRunning() {
+		t.Fatal("dev is not running, selectedIsRunning should be false")
+	}
+	d.cursor = 1
+	if !d.selectedIsRunning() {
+		t.Fatal("prod is running, selectedIsRunning should be true")
+	}
+
+	empty := newDashboard(&config.Config{})
+	if empty.selectedIsRunning() {
+		t.Fatal("empty dashboard should report false")
+	}
+}
+
+func TestActionResultUpdatesStatus(t *testing.T) {
+	d := dashboardWithRows("dev")
+
+	m, cmd := d.Update(actionResultMsg{verb: "Opened", name: "dev"})
+	if cmd == nil {
+		t.Fatal("actionResultMsg should return a refresh poll command")
+	}
+	if got := m.(dashboard).status; got != "Opened dev." {
+		t.Fatalf("success status = %q, want %q", got, "Opened dev.")
+	}
+
+	m, cmd = d.Update(actionResultMsg{verb: "Opened", name: "dev", err: errStub{}})
+	if cmd == nil {
+		t.Fatal("actionResultMsg error should still return a refresh poll command")
+	}
+	if got := m.(dashboard).status; !strings.Contains(got, "Opened dev failed") {
+		t.Fatalf("error status = %q, want it to mention the failure", got)
+	}
+}
+
 // errStub is a minimal error used to exercise the error poll path.
 type errStub struct{}
 
