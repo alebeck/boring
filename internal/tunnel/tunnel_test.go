@@ -67,8 +67,7 @@ func TestOpenSkipsPrepareWhenPrepared(t *testing.T) {
 		Name: "x", Host: "127.0.0.1", Mode: Local,
 		LocalAddress: "9000", RemoteAddress: "localhost:9000",
 		IdentityFile: "../../test/testdata/keys/client_enc",
-	})
-	tn.prompter = counting
+	}, counting)
 	tn.prepared = true // a tunnel that already connected once
 
 	// With the prepared guard, Open() skips prepare() entirely: makeClient()

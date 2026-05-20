@@ -17,11 +17,11 @@ func TestIPCPrompterRoundTrip(t *testing.T) {
 	// Client side: read the AuthPrompt, reply with answers.
 	go func() {
 		br := bufio.NewReader(b)
-		env, err := readEnvelope(br)
+		env, err := ReadEnvelope(br)
 		if err != nil || env.Type != MsgAuthPrompt {
 			return
 		}
-		_ = writeMsg(b, MsgAuthReply, AuthReply{Answers: []string{"123456"}})
+		_ = WriteMsg(b, MsgAuthReply, AuthReply{Answers: []string{"123456"}})
 	}()
 
 	p := newIPCPrompter(a, bufio.NewReader(a))
@@ -42,10 +42,10 @@ func TestIPCPrompterAbort(t *testing.T) {
 	// Client side: reply with an abort (non-empty Err).
 	go func() {
 		br := bufio.NewReader(b)
-		if _, err := readEnvelope(br); err != nil {
+		if _, err := ReadEnvelope(br); err != nil {
 			return
 		}
-		_ = writeMsg(b, MsgAuthReply, AuthReply{Err: "user cancelled"})
+		_ = WriteMsg(b, MsgAuthReply, AuthReply{Err: "user cancelled"})
 	}()
 
 	p := newIPCPrompter(a, bufio.NewReader(a))

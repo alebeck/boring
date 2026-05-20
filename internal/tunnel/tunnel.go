@@ -89,8 +89,10 @@ func (p *interactivePrompter) Prompt(name, instruction string,
 	return p.inner.Prompt(name, instruction, questions, echo)
 }
 
-func FromDesc(desc *Desc) *Tunnel {
-	return &Tunnel{Desc: desc}
+// FromDesc builds a Tunnel from a description. prompter supplies interactive
+// auth answers (2FA codes, key passphrases); pass nil for non-interactive use.
+func FromDesc(desc *Desc, prompter auth.Prompter) *Tunnel {
+	return &Tunnel{Desc: desc, prompter: prompter}
 }
 
 func (t *Tunnel) Open() (err error) {

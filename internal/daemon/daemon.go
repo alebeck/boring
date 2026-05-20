@@ -160,7 +160,7 @@ func (d *daemon) openTunnel(conn net.Conn, desc *tunnel.Desc) {
 		return
 	}
 
-	t := tunnel.FromDesc(desc)
+	t := tunnel.FromDesc(desc, nil)
 	if err = t.Open(); err != nil {
 		log.Errorf("%v: could not open: %v", t.Name, err)
 		return

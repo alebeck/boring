@@ -20,8 +20,7 @@ type TestResult struct {
 // and may be nil for non-interactive use.
 func TestConnection(desc *Desc, prompter auth.Prompter) TestResult {
 	start := time.Now()
-	t := FromDesc(desc)
-	t.prompter = prompter
+	t := FromDesc(desc, prompter)
 	if err := t.prepare(); err != nil {
 		return TestResult{Duration: time.Since(start), Err: err.Error()}
 	}

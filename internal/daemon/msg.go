@@ -34,32 +34,33 @@ type AuthReply struct {
 	Err string `json:"err,omitempty"`
 }
 
-// envelope wraps any message with its type for multiplexed streams.
-type envelope struct {
+// Envelope wraps any message with its type for multiplexed streams.
+type Envelope struct {
 	Type    MsgType         `json:"type"`
 	Payload json.RawMessage `json:"payload"`
 }
 
-// writeMsg serializes v and writes a typed envelope to w.
-func writeMsg(w io.Writer, t MsgType, v any) error {
+// WriteMsg serializes v and writes a typed envelope to w.
+func WriteMsg(w io.Writer, t MsgType, v any) error {
 	payload, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("failed to marshal %s: %w", t, err)
 	}
-	return ipc.Write(envelope{Type: t, Payload: payload}, w)
+	return ipc.Write(Envelope{Type: t, Payload: payload}, w)
 }
 
-// readEnvelope reads one typed envelope from r. The reader must be a shared
+// ReadEnvelope reads one typed envelope from r. The reader must be a shared
 // *bufio.Reader so bytes buffered past the first message survive across calls.
-func readEnvelope(r *bufio.Reader) (envelope, error) {
-	var e envelope
+func ReadEnvelope(r *bufio.Reader) (Envelope, error) {
+	var e Envelope
 	if err := ipc.Read(&e, r); err != nil {
 		return e, fmt.Errorf("failed to read envelope: %w", err)
 	}
 	return e, nil
 }
 
-func decodeAuthPrompt(e envelope) (AuthPrompt, error) {
+// DecodeAuthPrompt decodes an AuthPrompt from a typed envelope.
+func DecodeAuthPrompt(e Envelope) (AuthPrompt, error) {
 	var p AuthPrompt
 	if err := json.Unmarshal(e.Payload, &p); err != nil {
 		return p, fmt.Errorf("failed to decode %s: %w", MsgAuthPrompt, err)
@@ -67,7 +68,8 @@ func decodeAuthPrompt(e envelope) (AuthPrompt, error) {
 	return p, nil
 }
 
-func decodeAuthReply(e envelope) (AuthReply, error) {
+// DecodeAuthReply decodes an AuthReply from a typed envelope.
+func DecodeAuthReply(e Envelope) (AuthReply, error) {
 	var r AuthReply
 	if err := json.Unmarshal(e.Payload, &r); err != nil {
 		return r, fmt.Errorf("failed to decode %s: %w", MsgAuthReply, err)
@@ -75,7 +77,8 @@ func decodeAuthReply(e envelope) (AuthReply, error) {
 	return r, nil
 }
 
-func decodeResp(e envelope) (Resp, error) {
+// DecodeResp decodes a Resp from a typed envelope.
+func DecodeResp(e Envelope) (Resp, error) {
 	var r Resp
 	if err := json.Unmarshal(e.Payload, &r); err != nil {
 		return r, fmt.Errorf("failed to decode %s: %w", MsgResp, err)

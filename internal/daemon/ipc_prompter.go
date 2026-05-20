@@ -28,17 +28,17 @@ func (p *ipcPrompter) Prompt(name, instruction string,
 		Questions:   questions,
 		Echo:        echo,
 	}
-	if err := writeMsg(p.conn, MsgAuthPrompt, prompt); err != nil {
+	if err := WriteMsg(p.conn, MsgAuthPrompt, prompt); err != nil {
 		return nil, fmt.Errorf("failed to send auth prompt: %w", err)
 	}
-	env, err := readEnvelope(p.br)
+	env, err := ReadEnvelope(p.br)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read auth reply: %w", err)
 	}
 	if env.Type != MsgAuthReply {
 		return nil, fmt.Errorf("expected auth reply, got %q", env.Type)
 	}
-	reply, err := decodeAuthReply(env)
+	reply, err := DecodeAuthReply(env)
 	if err != nil {
 		return nil, err
 	}
