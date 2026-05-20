@@ -198,7 +198,7 @@ func (t *Tunnel) prepareForwards() error {
 	for _, f := range t.Forwards {
 		fr, err := parseForward(f)
 		if err != nil {
-			return fmt.Errorf("forward %q: %v", f.label(), err)
+			return fmt.Errorf("forward %q: %v", f.Label(), err)
 		}
 		t.forwards = append(t.forwards, fr)
 	}
@@ -271,10 +271,10 @@ func (t *Tunnel) makeListeners() error {
 	for _, fr := range t.forwards {
 		if err := t.makeListener(fr); err != nil {
 			t.closeListeners()
-			return fmt.Errorf("forward %q: %v", fr.label(), err)
+			return fmt.Errorf("forward %q: %v", fr.Label(), err)
 		}
 		log.Debugf("%v: forward %q listening on %v",
-			t.Name, fr.label(), fr.listener.Addr())
+			t.Name, fr.Label(), fr.listener.Addr())
 	}
 	return nil
 }
@@ -401,7 +401,7 @@ func (t *Tunnel) handleForward(fr *forwardRuntime) {
 		conn1, err := fr.listener.Accept()
 		if err != nil {
 			log.Errorf("%v: forward %q could not accept: %v",
-				t.Name, fr.label(), err)
+				t.Name, fr.Label(), err)
 			return
 		}
 		go t.waitFor(func() {
@@ -412,7 +412,7 @@ func (t *Tunnel) handleForward(fr *forwardRuntime) {
 			conn2, err := t.dial(fr, addr.net, addr.addr)
 			if err != nil {
 				log.Errorf("%v: forward %q could not dial: %v",
-					t.Name, fr.label(), err)
+					t.Name, fr.Label(), err)
 				return
 			}
 			tunnel(conn1, conn2)
@@ -448,7 +448,7 @@ func (t *Tunnel) handleSocks(fr *forwardRuntime) {
 		conn, err := fr.listener.Accept()
 		if err != nil {
 			log.Errorf("%v: forward %q could not accept: %v",
-				t.Name, fr.label(), err)
+				t.Name, fr.Label(), err)
 			return
 		}
 		go t.waitFor(func() { serv.ServeConn(conn) })

@@ -86,6 +86,9 @@ func TestTunnelMultiForwardList(t *testing.T) {
 	if !uptime.MatchString(stripANSI(out)) {
 		t.Errorf("multi-forward tunnel not shown open in list output: %s", out)
 	}
+	// The multi-forward tunnel renders as a grouped tree: a connection-level
+	// header row plus one indented ├/└ sub-row per named forward.
+	assertGroupedTree(t, stripANSI(out))
 
 	if c, out, err := cliCommand(env, "close", "test-multi"); err != nil {
 		t.Fatalf("failed to run CLI command: %v", err)
@@ -106,5 +109,41 @@ func TestTunnelMultiForwardList(t *testing.T) {
 	}
 	if !strings.Contains(listing, "closed") {
 		t.Errorf("multi-forward tunnel not shown closed after close: %s", out)
+	}
+	// The grouped tree is rendered the same whether the tunnel is open or
+	// closed — only the connection-level status differs.
+	assertGroupedTree(t, listing)
+}
+
+// assertGroupedTree checks that `boring list` rendered the "test-multi" tunnel
+// as a grouped tree: a header line carrying the tunnel name, followed by one
+// indented ├/└ sub-row per forward ("first" and "second").
+func assertGroupedTree(t *testing.T, listing string) {
+	t.Helper()
+	lines := strings.Split(listing, "\n")
+
+	header := -1
+	for i, l := range lines {
+		if strings.Contains(l, "test-multi") {
+			header = i
+			break
+		}
+	}
+	if header == -1 {
+		t.Fatalf("test-multi header row not found in list output:\n%s", listing)
+	}
+	// The header row names the tunnel but not its forwards.
+	if strings.Contains(lines[header], "first") || strings.Contains(lines[header], "second") {
+		t.Errorf("forward labels leaked onto the tunnel header row: %q", lines[header])
+	}
+	if header+2 >= len(lines) {
+		t.Fatalf("expected two forward sub-rows after the header:\n%s", listing)
+	}
+	first, second := lines[header+1], lines[header+2]
+	if !strings.Contains(first, "├") || !strings.Contains(first, "first") {
+		t.Errorf("first forward sub-row not rendered as ├ branch: %q", first)
+	}
+	if !strings.Contains(second, "└") || !strings.Contains(second, "second") {
+		t.Errorf("second forward sub-row not rendered as └ branch: %q", second)
 	}
 }

@@ -15,10 +15,10 @@ type forwardRuntime struct {
 	remoteAddr *address
 }
 
-// label names a forward for error messages and logs, delegating to the
+// Label names a forward for error messages and logs, delegating to the
 // underlying Forward.
-func (f *forwardRuntime) label() string {
-	return f.forward.label()
+func (f *forwardRuntime) Label() string {
+	return f.forward.Label()
 }
 
 // parseForward builds a forwardRuntime from a Forward, parsing its local and

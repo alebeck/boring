@@ -79,9 +79,9 @@ func TestPrepareForwardsBuildsOneRuntimePerForward(t *testing.T) {
 	if len(tn.forwards) != 2 {
 		t.Fatalf("expected 2 forward runtimes, got %d", len(tn.forwards))
 	}
-	if tn.forwards[0].label() != "db" || tn.forwards[1].label() != "cache" {
+	if tn.forwards[0].Label() != "db" || tn.forwards[1].Label() != "cache" {
 		t.Errorf("forward order/labels wrong: %q, %q",
-			tn.forwards[0].label(), tn.forwards[1].label())
+			tn.forwards[0].Label(), tn.forwards[1].Label())
 	}
 	if tn.forwards[0].localAddr.addr != "localhost:5432" {
 		t.Errorf("db localAddr = %q, want localhost:5432", tn.forwards[0].localAddr.addr)
@@ -191,10 +191,10 @@ func TestMakeListenersSuccess(t *testing.T) {
 // TestForwardLabelFallsBackToLocalAddress checks that an unnamed forward is
 // labelled by its local address, while a named forward uses its Name.
 func TestForwardLabelFallsBackToLocalAddress(t *testing.T) {
-	if got := (Forward{LocalAddress: "9000"}).label(); got != "9000" {
-		t.Errorf("unnamed label() = %q, want %q", got, "9000")
+	if got := (Forward{LocalAddress: "9000"}).Label(); got != "9000" {
+		t.Errorf("unnamed Label() = %q, want %q", got, "9000")
 	}
-	if got := (Forward{Name: "db", LocalAddress: "9000"}).label(); got != "db" {
-		t.Errorf("named label() = %q, want %q", got, "db")
+	if got := (Forward{Name: "db", LocalAddress: "9000"}).Label(); got != "db" {
+		t.Errorf("named Label() = %q, want %q", got, "db")
 	}
 }

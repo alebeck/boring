@@ -17,9 +17,10 @@ type Forward struct {
 	Mode          Mode        `toml:"mode,omitempty" json:"mode"`
 }
 
-// label returns a human-readable identifier for the forward, used in error
-// messages and logs: its configured Name, or its local address when unnamed.
-func (f Forward) label() string {
+// Label returns a human-readable identifier for the forward, used in error
+// messages, logs, and the `boring list` / TUI display: its configured Name,
+// or its local address when unnamed.
+func (f Forward) Label() string {
 	if f.Name != "" {
 		return f.Name
 	}

@@ -359,12 +359,38 @@ func printTunnelList(all []*tunnel.Desc) {
 	}
 }
 
-func tunnelTable(tunnels []*tunnel.Desc) *table.Table {
-	tbl := table.New("Status", "Name", "Local", "", "Remote", "Via")
+// tunnelTable builds the grouped-tree listing for `boring list`. A
+// single-forward tunnel renders inline on one line; a multi-forward tunnel
+// renders a connection-level header row plus one indented sub-row per forward.
+// It reads Desc.Forwards (the multi-forward model), not the legacy singular
+// local/remote/mode fields.
+func tunnelTable(tunnels []*tunnel.Desc) *table.TunnelTable {
+	tbl := table.NewTunnelTable()
 	for _, t := range tunnels {
-		tbl.AddRow(status(t), t.Name, t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
+		tbl.Add(table.TunnelRow{
+			Status:   status(t),
+			Name:     t.Name,
+			Via:      t.Host,
+			Forwards: forwardRows(t),
+		})
 	}
 	return tbl
+}
+
+// forwardRows converts a tunnel's forwards into renderable sub-rows. config.Load
+// guarantees Forwards has at least one entry; an empty slice yields no rows so
+// the tunnel still renders its header line.
+func forwardRows(t *tunnel.Desc) []table.ForwardRow {
+	rows := make([]table.ForwardRow, 0, len(t.Forwards))
+	for _, f := range t.Forwards {
+		rows = append(rows, table.ForwardRow{
+			Label:  f.Label(),
+			Local:  f.LocalAddress.String(),
+			Mode:   f.Mode.String(),
+			Remote: f.RemoteAddress.String(),
+		})
+	}
+	return rows
 }
 
 func filterByPatterns(ts map[string]*tunnel.Desc, pats []string) (map[string]bool, []string) {
