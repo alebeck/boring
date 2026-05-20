@@ -3,7 +3,7 @@ _boring() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    local commands=("open" "close" "list" "edit" "version" "help")
+    local commands=("open" "close" "list" "test" "tui" "edit" "version" "help")
 
     _boring_get_names() {
         local status="$1"
@@ -12,6 +12,8 @@ _boring() {
         # retrieve tunnel names based on command
         if [[ "$status" == "closed" ]]; then
             names=($(boring list 2>/dev/null | awk '$1 == "closed" { print $2 }'))
+        elif [[ "$status" == "all" ]]; then
+            names=($(boring list 2>/dev/null | awk '$1 != "Status" && NF >= 2 { print $2 }'))
         else
             names=($(boring list 2>/dev/null | awk '$1 != "closed" && $1 != "Status" && NF >= 2 { print $2 }'))
         fi
@@ -52,6 +54,8 @@ _boring() {
             _boring_get_names "closed"
         elif [[ "$cmd" == "close" || "$cmd" == "c" ]]; then
             _boring_get_names "open"
+        elif [[ "$cmd" == "test" || "$cmd" == "t" ]]; then
+            _boring_get_names "all"
         fi
     fi
 }

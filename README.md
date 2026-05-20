@@ -40,10 +40,25 @@ Usage:
     -a, --all                    Open all tunnels
     -g, --group <group>          Open all tunnels in a group
   boring close, c                Close tunnels (same options as 'open')
+  boring test, t <patterns>...   Test tunnel connections (SSH handshake + auth)
+  boring tui                     Launch the interactive terminal UI
   boring edit, e                 Edit the configuration file
   boring version, v              Show the version number
   boring help, h                 Show this help message
 ```
+
+## Interactive authentication
+
+`boring` supports SSH keyboard-interactive authentication (2FA) and
+passphrase-protected private keys. When a tunnel needs an interactive answer —
+a one-time code or a key passphrase — `boring` asks for it instead of failing:
+
+* `boring open` prompts directly on the terminal.
+* The `tui` shows a modal dialog for the prompt.
+
+A tunnel that authenticated via 2FA is not silently auto-reconnected, since a
+fresh code is required and the background daemon cannot ask for one; it is
+shown with a `needs auth` status so you can re-open it.
 
 ## Configuration
 
@@ -68,6 +83,11 @@ identity = "~/.ssh/id_prod"  # will try default ones if not set
 
 # ... more tunnels
 ```
+
+You can edit this file by hand, or let the `tui` manage it for you. When the
+TUI saves a change it rewrites `.boring.toml`, and on its first save it
+preserves your original hand-written file (including any comments) as
+`.boring.toml.bak`.
 
 Currently, supported options at tunnel level are:
 

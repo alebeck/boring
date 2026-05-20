@@ -6,6 +6,8 @@ _boring() {
         "open"
         "close"
         "list"
+        "test"
+        "tui"
         "edit"
         "version"
         "help"
@@ -16,6 +18,8 @@ _boring() {
 
         if [[ "$1" == "closed" ]]; then
             names=($(boring list 2>/dev/null | awk '$1 == "closed" { print $2 }'))
+        elif [[ "$1" == "all" ]]; then
+            names=($(boring list 2>/dev/null | awk '$1 != "Status" && NF >= 2 { print $2 }'))
         else
             names=($(boring list 2>/dev/null | awk '$1 != "closed" && $1 != "Status" && NF >= 2 { print $2 }'))
         fi
@@ -65,6 +69,8 @@ _boring() {
                 _boring_get_names "closed" "${line[@]:1}"
             elif [[ $line[1] == "close" || $line[1] == "c" ]]; then
                 _boring_get_names "open" "${line[@]:1}"
+            elif [[ $line[1] == "test" || $line[1] == "t" ]]; then
+                _boring_get_names "all" "${line[@]:1}"
             fi
             ;;
     esac
