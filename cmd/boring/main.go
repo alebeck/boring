@@ -50,6 +50,8 @@ func main() {
 		controlTunnels(os.Args[2:], daemon.Close)
 	case "list", "l", "ls":
 		listTunnels(os.Args[2:])
+	case "tui":
+		runTUI()
 	case "edit", "e":
 		editConfig()
 	case "version", "v":
@@ -102,6 +104,7 @@ func printUsage() {
     -a, --all                    Open all tunnels
     -g, --group <group>          Open all tunnels in a group` + "\n")
 	log.Printf("  boring close, c                Close tunnels (same options as 'open')\n")
+	log.Printf("  boring tui                     Launch the interactive terminal UI\n")
 	log.Printf("  boring edit, e                 Edit the configuration file\n")
 	log.Printf("  boring version, v              Show the version number\n")
 	log.Printf("  boring help, h                 Show this help message\n")
