@@ -165,10 +165,29 @@ func (p *syncPrompter) Prompt(name, instruction string,
 	return p.inner.Prompt(name, instruction, questions, echo)
 }
 
+// scriptedPrompter answers every challenge question with the given value. It
+// is used only by end-to-end tests, which set BORING_AUTH_ANSWERS so that
+// `boring open` can authenticate without a terminal.
+func scriptedPrompter(answer string) auth.Prompter {
+	return auth.FuncPrompter(func(_, _ string, questions []string, _ []bool) ([]string, error) {
+		answers := make([]string, len(questions))
+		for i := range answers {
+			answers[i] = answer
+		}
+		return answers, nil
+	})
+}
+
 // openPrompter returns the auth prompter for `boring open`: a terminal prompter
 // for interactive sessions, or one that fails fast when there is no terminal to
 // prompt on. The result is wrapped so concurrent open goroutines serialize.
 func openPrompter() auth.Prompter {
+	// BORING_AUTH_ANSWERS is a documented test-only hook: when set, it
+	// supplies a fixed answer to every challenge non-interactively. The env
+	// var is unset in normal use, so production behavior is unchanged.
+	if answer := os.Getenv("BORING_AUTH_ANSWERS"); answer != "" {
+		return scriptedPrompter(answer)
+	}
 	var base auth.Prompter
 	if isTerm {
 		base = auth.NewTerminalPrompter()

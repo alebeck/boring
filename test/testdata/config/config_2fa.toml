@@ -1,0 +1,14 @@
+keep_alive = 0
+
+[[tunnels]]
+name = "test-2fa"
+mode = "local"
+host = "127.0.0.1"
+port = 58392
+local = "localhost:49721"
+remote = "localhost:49722"
+# The 2FA server authenticates via keyboard-interactive only; an identity file
+# is still required because `boring` needs at least one key file to assemble
+# its auth methods. The server has no public-key callback, so this key is
+# never accepted and authentication proceeds through the 2FA challenge.
+identity = "../testdata/keys/client"
