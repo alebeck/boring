@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -259,7 +258,7 @@ func listTunnels(args []string) {
 		return
 	}
 
-	all := orderTunnelsForList(conf.Tunnels, ts)
+	all := tunnel.Order(conf.Tunnels, ts)
 
 	// Filter by group if requested
 	if groupFilter != "" {
@@ -280,33 +279,6 @@ func listTunnels(args []string) {
 	}
 
 	printTunnelList(all)
-}
-
-// orderTunnelsForList combines configured and running tunnels into an ordered slice.
-// Config order is preserved; running-but-not-configured tunnels are appended sorted by name.
-func orderTunnelsForList(conf []tunnel.Desc, ts map[string]*tunnel.Desc) []*tunnel.Desc {
-	var all []*tunnel.Desc
-	visited := make(map[string]bool)
-	for i := range conf {
-		t := &conf[i]
-		if q, ok := ts[t.Name]; ok {
-			all = append(all, q)
-			visited[q.Name] = true
-			continue
-		}
-		all = append(all, t)
-	}
-	var extra []string
-	for name := range ts {
-		if !visited[name] {
-			extra = append(extra, name)
-		}
-	}
-	sort.Strings(extra)
-	for _, name := range extra {
-		all = append(all, ts[name])
-	}
-	return all
 }
 
 func printTunnelList(all []*tunnel.Desc) {
