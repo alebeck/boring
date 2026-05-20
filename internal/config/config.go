@@ -27,7 +27,7 @@ type Config struct {
 	// KeepAlive allows to specify a global keep alive interval,
 	// (in seconds) overriding the default one. `0` indicates
 	// no keep alive.
-	KeepAlive  *int                    `toml:"keep_alive"`
+	KeepAlive  *int                    `toml:"keep_alive,omitempty"`
 	TunnelsMap map[string]*tunnel.Desc `toml:"-"`
 }
 
@@ -51,11 +51,16 @@ func getConfigHome() string {
 	return "~"
 }
 
-// Load parses the boring configuration file
+// Load parses the boring configuration file at the default path.
 func Load() (*Config, error) {
+	return loadFrom(Path)
+}
+
+// loadFrom parses the boring configuration file at the given path.
+func loadFrom(path string) (*Config, error) {
 	cfg := Config{KeepAlive: &defaultKeepAliveInterval}
 
-	if _, err := toml.DecodeFile(Path, &cfg); err != nil {
+	if _, err := toml.DecodeFile(path, &cfg); err != nil {
 		return nil, fmt.Errorf("could not decode config file: %w", err)
 	}
 
