@@ -215,9 +215,26 @@ func openTunnel(t *tunnel.Desc, prompter auth.Prompter) error {
 		return errOpFailed
 	}
 
-	log.Infof("Opened tunnel '%s': %s %v %s via %s.", log.Green+log.Bold+t.Name+log.Reset,
-		t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
+	log.Infof("Opened tunnel '%s': %s via %s.", log.Green+log.Bold+t.Name+log.Reset,
+		describeForwards(t), t.Host)
 	return nil
+}
+
+// describeForwards renders a tunnel's forwards for the 'open' confirmation
+// message. It reads Desc.Forwards (the multi-forward model) rather than the
+// legacy singular local/remote/mode fields, which are unset for tunnels
+// configured with [[tunnels.forward]] blocks. config.Load guarantees Forwards
+// has at least one entry; an empty slice falls back to a neutral label.
+func describeForwards(t *tunnel.Desc) string {
+	if len(t.Forwards) == 0 {
+		return "no forwards"
+	}
+	parts := make([]string, 0, len(t.Forwards))
+	for _, f := range t.Forwards {
+		parts = append(parts, fmt.Sprintf("%s %v %s",
+			f.LocalAddress, f.Mode, f.RemoteAddress))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func closeTunnel(t *tunnel.Desc) error {
