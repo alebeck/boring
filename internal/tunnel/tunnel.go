@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alebeck/boring/internal/auth"
 	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/proxy"
 	"github.com/alebeck/boring/internal/ssh_config"
@@ -47,14 +48,17 @@ type Tunnel struct {
 	// (2FA), so it must not be silently auto-reconnected: a fresh code is required
 	// and the daemon cannot prompt non-interactively.
 	interactive bool
-	hops        []ssh_config.Hop
-	Closed      chan struct{}
-	stop        chan struct{}
-	listener    net.Listener
-	wg          sync.WaitGroup
-	client      *ssh.Client
-	localAddr   *address
-	remoteAddr  *address
+	// prompter supplies interactive auth answers (2FA codes, key passphrases).
+	// A nil prompter means non-interactive.
+	prompter   auth.Prompter
+	hops       []ssh_config.Hop
+	Closed     chan struct{}
+	stop       chan struct{}
+	listener   net.Listener
+	wg         sync.WaitGroup
+	client     *ssh.Client
+	localAddr  *address
+	remoteAddr *address
 	*Desc
 }
 
@@ -121,9 +125,9 @@ func (t *Tunnel) prepare() error {
 
 	sc.EnsureUser()
 
-	// Infer series of hops from ssh config.
-	// A nil prompter means non-interactive; task 4.4 will pass a real one.
-	if t.hops, err = sc.ToHops(nil); err != nil {
+	// Infer series of hops from ssh config. The tunnel's prompter (which may be
+	// nil for non-interactive use) reaches SSH auth through here.
+	if t.hops, err = sc.ToHops(t.prompter); err != nil {
 		return err
 	}
 
