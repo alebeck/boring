@@ -35,21 +35,32 @@ func main() {
 		os.Exit(1)
 	}
 
-	switch os.Args[1] {
+	dispatch(os.Args[1], os.Args[2:])
+}
+
+// dispatch routes a parsed command name and its arguments to the matching
+// handler. args excludes the program name and the command itself.
+func dispatch(cmd string, args []string) {
+	switch cmd {
 	case "open", "o":
-		if len(os.Args) < 3 {
+		if len(args) < 1 {
 			log.Fatalf("'open' requires at least one 'pattern' argument," +
 				" or an '--all/-a' or '-g/--group <group>' flag.")
 		}
-		controlTunnels(os.Args[2:], daemon.Open)
+		controlTunnels(args, daemon.Open)
 	case "close", "c":
-		if len(os.Args) < 3 {
+		if len(args) < 1 {
 			log.Fatalf("'close' requires at least one 'pattern' argument," +
 				" or an '--all/-a' or '-g/--group <group>' flag.")
 		}
-		controlTunnels(os.Args[2:], daemon.Close)
+		controlTunnels(args, daemon.Close)
 	case "list", "l", "ls":
-		listTunnels(os.Args[2:])
+		listTunnels(args)
+	case "test", "t":
+		if len(args) < 1 {
+			log.Fatalf("'test' requires at least one 'pattern' argument.")
+		}
+		testTunnels(args)
 	case "tui":
 		runTUI()
 	case "edit", "e":
@@ -59,7 +70,7 @@ func main() {
 	case "help", "h":
 		printUsage()
 	default:
-		log.Printf("Unknown command: %v\n\n", os.Args[1])
+		log.Printf("Unknown command: %v\n\n", cmd)
 		printUsage()
 		os.Exit(1)
 	}
@@ -104,6 +115,7 @@ func printUsage() {
     -a, --all                    Open all tunnels
     -g, --group <group>          Open all tunnels in a group` + "\n")
 	log.Printf("  boring close, c                Close tunnels (same options as 'open')\n")
+	log.Printf("  boring test, t <patterns>...   Test tunnel connections (SSH handshake + auth)\n")
 	log.Printf("  boring tui                     Launch the interactive terminal UI\n")
 	log.Printf("  boring edit, e                 Edit the configuration file\n")
 	log.Printf("  boring version, v              Show the version number\n")
