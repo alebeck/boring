@@ -354,9 +354,9 @@ func (sc *SSHConfig) makeSigners() ([]ssh.Signer, error) {
 	// https://github.com/openssh/openssh-portable/blob/832a77000abe61f61bddb9e595f45c7131c0269d/sshconnect2.c#L1669
 	// Order (OpenSSH-like):
 	// 1. CertificateFile certs (bound to first matching private key)
-	// 2. Agent keys that match IdentityFiles
-	// 3. Other agent keys (unless IdentitiesOnly)
-	// 4. IdentityFile keys
+	// 2. Agent keys that match a configured IdentityFile
+	// 3. Configured IdentityFile keys loaded from a file
+	// 4. Other agent keys (unless IdentitiesOnly)
 	// + agent certificate identities (already certified signers)
 
 	// Load ID groups
@@ -397,14 +397,17 @@ func (sc *SSHConfig) makeSigners() ([]ssh.Signer, error) {
 		sigs = append(sigs, id.signer)
 	}
 
-	// Plain keys as fallback (bucket order)
+	// Plain keys, in bucket order. Configured keys (agent-backed, then
+	// file-backed) come before unconfigured agent keys, so an explicit
+	// `identity` is offered ahead of an agent that may hold many keys —
+	// servers cap authentication attempts (MaxAuthTries, typically 6).
 	for _, id := range agentCfgIDs {
 		sigs = append(sigs, id.signer)
 	}
-	for _, id := range agentOtherIDs {
+	for _, id := range fileIDs {
 		sigs = append(sigs, id.signer)
 	}
-	for _, id := range fileIDs {
+	for _, id := range agentOtherIDs {
 		sigs = append(sigs, id.signer)
 	}
 
