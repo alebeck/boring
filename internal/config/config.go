@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/BurntSushi/toml"
 	"github.com/alebeck/boring/internal/paths"
@@ -91,39 +90,13 @@ func Load() (*Config, error) {
 }
 
 func buildTunnelsMap(tunnels []tunnel.Desc) (map[string]*tunnel.Desc, error) {
+	if err := Validate(tunnels); err != nil {
+		return nil, err
+	}
 	m := make(map[string]*tunnel.Desc)
 	for i := range tunnels {
 		t := &tunnels[i]
-		if _, exists := m[t.Name]; exists {
-			return nil, fmt.Errorf("found duplicated tunnel name '%v'", t.Name)
-		}
-		if t.Name == "" || strings.Contains(t.Name, " ") ||
-			specialPrefix(t.Name) || containsGlob(t.Name) {
-			return nil, fmt.Errorf("tunnel names cannot be empty, contain spaces,"+
-				" start with special characters, or contain glob characters \"*?[\"."+
-				" Found '%v'", t.Name)
-		}
-		if t.Group != "" && (strings.Contains(t.Group, " ") ||
-			specialPrefix(t.Group) || containsGlob(t.Group)) {
-			return nil, fmt.Errorf("group names cannot contain spaces,"+
-				" start with special characters, or contain glob characters \"*?[\"."+
-				" Found '%v'", t.Group)
-		}
 		m[t.Name] = t
 	}
 	return m, nil
-}
-
-func specialPrefix(s string) bool {
-	if s == "" {
-		return false
-	}
-	firstChar := s[0]
-	return !(firstChar >= 'A' && firstChar <= 'Z' ||
-		firstChar >= 'a' && firstChar <= 'z' ||
-		firstChar >= '0' && firstChar <= '9')
-}
-
-func containsGlob(s string) bool {
-	return strings.ContainsAny(s, "*?[")
 }
