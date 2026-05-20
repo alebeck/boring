@@ -50,6 +50,39 @@ func TestFinalStatus(t *testing.T) {
 	}
 }
 
+// TestOpenSkipsPrepareWhenPrepared locks the mechanism that lets decrypted
+// SSH signers survive a reconnect: once a tunnel is prepared, Open() must not
+// re-run prepare() (which loads and decrypts keys, prompting the user). Every
+// reconnect goes through Open() with prepared already true, so a passphrase is
+// never requested twice. The tunnel points at an encrypted identity file, so
+// if the prepared guard were removed, prepare() would decrypt it and bump the
+// prompter count — which is exactly what this test forbids.
+func TestOpenSkipsPrepareWhenPrepared(t *testing.T) {
+	var count int
+	counting := auth.FuncPrompter(func(_, _ string, _ []string, _ []bool) ([]string, error) {
+		count++
+		return []string{"testpass"}, nil
+	})
+	tn := FromDesc(&Desc{
+		Name: "x", Host: "127.0.0.1", Mode: Local,
+		LocalAddress: "9000", RemoteAddress: "localhost:9000",
+		IdentityFile: "../../test/testdata/keys/client_enc",
+	})
+	tn.prompter = counting
+	tn.prepared = true // a tunnel that already connected once
+
+	// With the prepared guard, Open() skips prepare() entirely: makeClient()
+	// fails fast (no hops) and key loading never runs, so the prompter is
+	// untouched. If the guard were removed, prepare() would run, decrypt the
+	// passphrase-protected key, and bump the count.
+	if err := tn.Open(); err == nil {
+		t.Fatal("expected Open to fail: tunnel has no hops")
+	}
+	if count != 0 {
+		t.Fatalf("prepare() re-ran despite prepared=true: prompter called %d times, want 0", count)
+	}
+}
+
 func TestInteractivePrompterTracksKeyboardInteractive(t *testing.T) {
 	tn := &Tunnel{Desc: &Desc{Name: "x"}}
 	inner := auth.FuncPrompter(func(_, _ string, _ []string, _ []bool) ([]string, error) {

@@ -94,6 +94,11 @@ func FromDesc(desc *Desc) *Tunnel {
 }
 
 func (t *Tunnel) Open() (err error) {
+	// prepare() resolves SSH config and loads keys, decrypting any
+	// passphrase-protected ones (prompting the user). The prepared guard
+	// makes this run exactly once: reconnect attempts reuse the decrypted
+	// signers cached in t.hops, so the user is never re-prompted for a key
+	// passphrase on reconnect.
 	if !t.prepared {
 		if err = t.prepare(); err != nil {
 			return err
