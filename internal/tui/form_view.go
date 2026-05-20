@@ -28,8 +28,8 @@ func formRow(label, value string, focused bool) string {
 	return line
 }
 
-// View renders the form: title, every field as a labelled row, an error line
-// (if any), and the key hint.
+// View renders the form: title, every field as a labelled row, and an error
+// line (if any). The key hint is shown by the dashboard footer.
 func (f tunnelForm) View() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(f.title()))
@@ -39,8 +39,6 @@ func (f tunnelForm) View() string {
 		b.WriteString("\n\n")
 		b.WriteString(errStyle.Render(f.errMsg))
 	}
-	b.WriteString("\n\n")
-	b.WriteString(dimStyle.Render(formHint))
 	return b.String()
 }
 

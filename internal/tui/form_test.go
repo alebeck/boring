@@ -169,19 +169,22 @@ func TestFormUpdateActions(t *testing.T) {
 	}
 }
 
-func TestFormViewShowsTitleAndHint(t *testing.T) {
+func TestFormView(t *testing.T) {
 	add := newTunnelForm()
-	out := add.View()
-	if !strings.Contains(out, "Add tunnel") {
-		t.Fatalf("add form view should show 'Add tunnel', got:\n%s", out)
-	}
-	if !strings.Contains(out, "esc cancel") {
-		t.Fatalf("form view should show the key hint, got:\n%s", out)
+	if !strings.Contains(add.View(), "Add tunnel") {
+		t.Fatalf("add form view should show 'Add tunnel', got:\n%s", add.View())
 	}
 
 	edit := formFromDesc(tunnel.Desc{Name: "dev", Host: "h"})
 	if !strings.Contains(edit.View(), "Edit tunnel: dev") {
 		t.Fatalf("edit form view should name the tunnel, got:\n%s", edit.View())
+	}
+
+	// The form's key hint lives in the dashboard footer, not the form body.
+	d := dashboardWithRows("a")
+	d.form = &add
+	if !strings.Contains(d.View(), "esc cancel") {
+		t.Fatalf("dashboard footer should show the form key hint, got:\n%s", d.View())
 	}
 }
 

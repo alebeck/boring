@@ -25,8 +25,27 @@ func statusText(s tunnel.Status) string {
 	}
 }
 
-// View renders the whole dashboard.
+// View renders the whole dashboard: a body region (title + table or active
+// modal) and a fixed footer pinned to the bottom of the terminal.
 func (d dashboard) View() string {
+	body := d.bodyView()
+	footer := d.footerView()
+	if d.height <= 0 {
+		// Window size not known yet; render without bottom-pinning.
+		return body + "\n\n" + footer
+	}
+	// Pad between the body and the footer so the footer rests on the last
+	// rows of the terminal, like a fixed tool bar.
+	gap := d.height - lipgloss.Height(body) - lipgloss.Height(footer)
+	if gap < 1 {
+		gap = 1
+	}
+	return body + "\n" + strings.Repeat("\n", gap) + footer
+}
+
+// bodyView renders the title and the main content: the tunnel table, or the
+// active modal / form / help screen.
+func (d dashboard) bodyView() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("boring"))
 	b.WriteString("\n\n")
@@ -44,9 +63,6 @@ func (d dashboard) View() string {
 	default:
 		b.WriteString(d.tableView())
 	}
-	b.WriteString("\n")
-	b.WriteString(d.statusBar())
-	b.WriteString("\n")
 	return b.String()
 }
 
@@ -163,16 +179,49 @@ func renderRow(t *tunnel.Desc, widths []int, selected bool) string {
 	return line
 }
 
-// statusBar renders the bottom bar: a status message, or a key hint.
-func (d dashboard) statusBar() string {
+// footerView renders the fixed bottom area: a separator rule, a message line
+// (the transient status/error — blank when there is none, so the line below
+// never shifts), and a context key-hint line that is always shown. The
+// key hints therefore never disappear behind a status message.
+func (d dashboard) footerView() string {
+	width := d.width
+	if width <= 0 {
+		width = 80
+	}
+	sep := dimStyle.Render(strings.Repeat("─", width))
+	return sep + "\n" + d.messageLine() + "\n" + statusBarStyle.Render(d.keyHint())
+}
+
+// messageLine renders the transient status/error message as a single line —
+// blank when there is no message — so the key-hint line never moves.
+func (d dashboard) messageLine() string {
 	if d.status == "" {
-		return statusBarStyle.Render(
-			"j/k move · enter open/close · t test · a add · e edit · d delete · ? help · q quit")
+		return ""
 	}
-	if strings.HasPrefix(d.status, daemonUnavailablePrefix) {
-		return errStyle.Render(d.status)
+	msg := strings.ReplaceAll(d.status, "\n", " ")
+	if strings.HasPrefix(msg, daemonUnavailablePrefix) {
+		return errStyle.Render(msg)
 	}
-	return statusBarStyle.Render(d.status)
+	return statusBarStyle.Render(msg)
+}
+
+// keyHint returns the key reference for the current context. It is always
+// shown in the footer, so the commands never disappear behind a message.
+func (d dashboard) keyHint() string {
+	switch {
+	case d.authModal != nil:
+		return "enter submit · esc cancel · ctrl+c quit"
+	case d.form != nil:
+		return formHint
+	case d.confirmDelete != "":
+		return "y confirm · n / esc cancel · ctrl+c quit"
+	case d.testResult != nil:
+		return "any key dismisses · ctrl+c quit"
+	case d.showHelp:
+		return "? close help · q quit"
+	default:
+		return "j/k move · enter open/close · t test · a add · e edit · d delete · ? help · q quit"
+	}
 }
 
 // helpView renders the key reference shown when help is toggled.
