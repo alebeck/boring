@@ -35,6 +35,28 @@ func TestTestCommandReachable(t *testing.T) {
 	}
 }
 
+// TestTestCommandMultiForward checks that `boring test` reports a reachable
+// multi-forward tunnel as a successful connection and exits 0. The command
+// verifies only the SSH handshake and auth, opening no listeners, so it must
+// succeed regardless of how many [[tunnels.forward]] blocks the tunnel carries.
+func TestTestCommandMultiForward(t *testing.T) {
+	env, err := makeEnv(testCmdConfig(), t)
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+
+	c, out, err := cliCommand(env, "test", "test-multi")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 0 {
+		t.Fatalf("exit code %d, should be 0: %s", c, out)
+	}
+	if !strings.Contains(stripANSI(out), "connection OK") {
+		t.Fatalf("output did not indicate success: %s", out)
+	}
+}
+
 // TestTestCommandUnreachable checks that `boring test` reports an unreachable
 // tunnel as a failed connection and exits 1.
 func TestTestCommandUnreachable(t *testing.T) {
