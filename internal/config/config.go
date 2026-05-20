@@ -76,6 +76,15 @@ func loadFrom(path string) (*Config, error) {
 		}
 	}
 
+	// Normalize every tunnel so Forwards is always populated (length >= 1).
+	// A tunnel with no [[tunnels.forward]] blocks gets a single implicit
+	// forward built from the legacy local/remote/mode shorthand. This runs
+	// before the socks-label rewrite below so the implicit forward captures
+	// the real addresses rather than the SocksLabel placeholder.
+	for i := range cfg.Tunnels {
+		normalizeForwards(&cfg.Tunnels[i])
+	}
+
 	// Create a map of tunnel names to tunnel pointers for easy lookup later
 	m, err := buildTunnelsMap(cfg.Tunnels)
 	if err != nil {
@@ -95,6 +104,21 @@ func loadFrom(path string) (*Config, error) {
 
 	cfg.TunnelsMap = m
 	return &cfg, nil
+}
+
+// normalizeForwards ensures a tunnel's Forwards slice has at least one entry.
+// If no [[tunnels.forward]] blocks were given, it builds a single implicit
+// forward from the legacy local/remote/mode shorthand. A tunnel that already
+// has forwards is left unchanged.
+func normalizeForwards(t *tunnel.Desc) {
+	if len(t.Forwards) > 0 {
+		return
+	}
+	t.Forwards = []tunnel.Forward{{
+		LocalAddress:  t.LocalAddress,
+		RemoteAddress: t.RemoteAddress,
+		Mode:          t.Mode,
+	}}
 }
 
 func buildTunnelsMap(tunnels []tunnel.Desc) (map[string]*tunnel.Desc, error) {

@@ -41,6 +41,11 @@ type Desc struct {
 	Mode      Mode      `toml:"mode" json:"mode"`
 	Status    Status    `toml:"-" json:"status"`
 	LastConn  time.Time `toml:"-" json:"last_conn"`
+	// Forwards is the multi-forward model: every loaded tunnel has at least
+	// one forward. The toml:"forward" tag makes [[tunnels.forward]] blocks
+	// decode into this slice; config.Load also folds the legacy
+	// local/remote/mode shorthand into a single-element Forwards slice.
+	Forwards []Forward `toml:"forward,omitempty" json:"forwards,omitempty"`
 }
 
 // Tunnel is a representation internal to the tunnel and daemon packages,
