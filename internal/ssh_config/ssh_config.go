@@ -208,7 +208,7 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 		return nil, err
 	}
 	log.Debugf("Trying %d key file(s)", len(sigs))
-	auth := []ssh.AuthMethod{ssh.PublicKeys(sigs...)}
+	authMethods := buildAuthMethods(sigs, sc.prompter)
 
 	keyCallback, keyAlgos, err := sc.makeCallbackAndAlgos()
 	if err != nil {
@@ -222,7 +222,7 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 			MACs:         sc.Macs,
 		},
 		User:              sc.User,
-		Auth:              auth,
+		Auth:              authMethods,
 		HostKeyAlgorithms: keyAlgos,
 		HostKeyCallback:   keyCallback,
 		Timeout:           sshConnTimeout,
@@ -232,6 +232,28 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 	hops = append(hops, hop)
 
 	return hops, nil
+}
+
+// buildAuthMethods returns the SSH auth methods: public keys always, plus
+// keyboard-interactive (2FA) when an interactive prompter is available.
+func buildAuthMethods(signers []ssh.Signer, prompter auth.Prompter) []ssh.AuthMethod {
+	methods := []ssh.AuthMethod{ssh.PublicKeys(signers...)}
+	if prompter != nil {
+		methods = append(methods, ssh.KeyboardInteractive(keyboardInteractiveChallenge(prompter)))
+	}
+	return methods
+}
+
+// keyboardInteractiveChallenge delegates an SSH keyboard-interactive challenge
+// to prompter, short-circuiting informational (zero-question) challenges that
+// need no user input.
+func keyboardInteractiveChallenge(prompter auth.Prompter) ssh.KeyboardInteractiveChallenge {
+	return func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+		if len(questions) == 0 {
+			return nil, nil // informational challenge, no input
+		}
+		return prompter.Prompt(name, instruction, questions, echos)
+	}
 }
 
 func (sc *SSHConfig) loadCerts() (certs []*ssh.Certificate) {
