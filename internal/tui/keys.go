@@ -14,6 +14,7 @@ const (
 	keyAdd     = "a"
 	keyEdit    = "e"
 	keyDelete  = "d"
+	keyTest    = "t"
 )
 
 // Confirmation-prompt key bindings, matched against tea.KeyMsg.String().

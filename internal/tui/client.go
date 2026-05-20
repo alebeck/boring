@@ -86,6 +86,21 @@ func openTunnelCmd(desc tunnel.Desc, prompter auth.Prompter) tea.Cmd {
 	}
 }
 
+// testResultMsg carries the outcome of a tunnel connection test.
+type testResultMsg struct {
+	name   string
+	result tunnel.TestResult
+}
+
+// testConnectionCmd returns a command that tests the SSH connection for desc,
+// using prompter for any interactive auth. It opens no listener.
+func testConnectionCmd(desc tunnel.Desc, prompter auth.Prompter) tea.Cmd {
+	return func() tea.Msg {
+		res := tunnel.TestConnection(&desc, prompter)
+		return testResultMsg{name: desc.Name, result: res}
+	}
+}
+
 // closeTunnelCmd returns a command that asks the daemon to close the named tunnel.
 func closeTunnelCmd(name string) tea.Cmd {
 	return func() tea.Msg {

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 )
@@ -75,5 +76,27 @@ func confirmView(message string) string {
 	b.WriteString(message)
 	b.WriteString("\n\n")
 	b.WriteString(dimStyle.Render("y / n"))
+	return modalStyle.Render(b.String())
+}
+
+// testResultView renders a bordered box showing the outcome of a connection
+// test: a success line with the elapsed time, or a failure line with the error.
+func testResultView(msg testResultMsg) string {
+	var b strings.Builder
+	if msg.result.OK {
+		b.WriteString(modalTitleStyle.Render("OK " + msg.name + ": connection OK"))
+		b.WriteString("\n\n")
+		b.WriteString(dimStyle.Render(
+			"handshake + auth in " + msg.result.Duration.Round(time.Millisecond).String()))
+	} else {
+		b.WriteString(modalTitleStyle.Render("FAILED " + msg.name + ": connection failed"))
+		b.WriteString("\n\n")
+		b.WriteString(errStyle.Render(msg.result.Err))
+		b.WriteString("\n")
+		b.WriteString(dimStyle.Render(
+			"failed after " + msg.result.Duration.Round(time.Millisecond).String()))
+	}
+	b.WriteString("\n\n")
+	b.WriteString(dimStyle.Render("press any key"))
 	return modalStyle.Render(b.String())
 }

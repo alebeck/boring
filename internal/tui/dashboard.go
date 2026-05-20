@@ -36,6 +36,9 @@ type dashboard struct {
 	// confirmDelete names the tunnel whose delete confirmation is showing;
 	// empty when no confirmation is active.
 	confirmDelete string
+	// testResult holds the outcome of a connection test while its result modal
+	// is showing; nil when no result modal is active.
+	testResult *testResultMsg
 }
 
 // newDashboard builds the initial dashboard from the loaded config.
@@ -64,6 +67,8 @@ func (d dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return d, pollTunnels()
 	case actionResultMsg:
 		return d.handleActionResult(msg)
+	case testResultMsg:
+		return d.handleTestResult(msg)
 	case authRequestMsg:
 		return d.handleAuthRequest(msg)
 	case tea.KeyMsg:
@@ -73,10 +78,17 @@ func (d dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // routeKey dispatches a keypress: the auth modal takes precedence, then the
-// add/edit form, then the delete confirmation, otherwise the dashboard's own
-// key handling. In practice at most one of {modal, form, confirmation} is
-// active.
+// add/edit form, then the delete confirmation, then the test-result modal,
+// otherwise the dashboard's own key handling. The auth modal keeps top
+// precedence because it can legitimately appear during a connection test that
+// needs interactive auth.
 func (d dashboard) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Ctrl+C always quits, from any screen or modal. Drain any pending auth
+	// requests so blocked command goroutines unblock cleanly.
+	if msg.String() == keyCtrlC {
+		d.abortAllAuth()
+		return d, tea.Quit
+	}
 	if d.authModal != nil {
 		return d.updateAuthModal(msg)
 	}
@@ -85,6 +97,10 @@ func (d dashboard) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if d.confirmDelete != "" {
 		return d.handleDeleteConfirm(msg)
+	}
+	if d.testResult != nil {
+		d.testResult = nil
+		return d, nil
 	}
 	return d.handleKey(msg)
 }
@@ -101,15 +117,12 @@ func (d dashboard) handleAuthRequest(msg authRequestMsg) (tea.Model, tea.Cmd) {
 	return d, textinput.Blink
 }
 
-// updateAuthModal routes a keypress to the active auth modal: ctrl+c aborts
-// every pending request and quits, esc aborts the active request, enter submits
-// the current answer (and advances to the next question or resolves the
-// request), any other key edits the text input.
+// updateAuthModal routes a keypress to the active auth modal: esc aborts the
+// active request, enter submits the current answer (and advances to the next
+// question or resolves the request), any other key edits the text input.
+// ctrl+c is handled earlier in routeKey, which quits from any screen.
 func (d dashboard) updateAuthModal(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch k.Type {
-	case tea.KeyCtrlC:
-		d.abortAllAuth()
-		return d, tea.Quit
 	case tea.KeyEsc:
 		d.authModal.req.reply <- authReply{err: auth.ErrAborted}
 		d.advanceAuthQueue()
@@ -178,6 +191,14 @@ func (d dashboard) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) 
 	return d, pollTunnels()
 }
 
+// handleTestResult records a connection test outcome and shows its modal,
+// clearing the transient "Testing..." status.
+func (d dashboard) handleTestResult(msg testResultMsg) (tea.Model, tea.Cmd) {
+	d.testResult = &msg
+	d.status = ""
+	return d, nil
+}
+
 // handleTunnels merges a poll result and schedules the next poll.
 func (d dashboard) handleTunnels(msg tunnelsMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
@@ -196,7 +217,7 @@ func (d dashboard) handleTunnels(msg tunnelsMsg) (tea.Model, tea.Cmd) {
 // handleKey processes a keypress.
 func (d dashboard) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch k.String() {
-	case keyQuit, keyCtrlC:
+	case keyQuit:
 		d.abortAllAuth()
 		return d, tea.Quit
 	case keyHelp:
@@ -220,8 +241,22 @@ func (d dashboard) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return d.openEditForm()
 	case keyDelete:
 		return d.openDeleteConfirm()
+	case keyTest:
+		return d.testSelected()
 	}
 	return d, nil
+}
+
+// testSelected runs a connection test against the selected tunnel. It does
+// nothing when there are no rows. The test opens no listener, so it is safe to
+// run whether or not the tunnel is already running.
+func (d dashboard) testSelected() (tea.Model, tea.Cmd) {
+	if len(d.rows) == 0 {
+		return d, nil
+	}
+	name := d.rows[d.cursor].Name
+	d.status = "Testing " + name + "..."
+	return d, testConnectionCmd(*d.rows[d.cursor], d.prompter)
 }
 
 // openAddForm shows an empty form for a new tunnel.
