@@ -1,6 +1,7 @@
 package ssh_config
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -278,7 +279,7 @@ func (sc *SSHConfig) loadIDs() (fileIDs, agentCertIDs, agentCfgIDs, agentOtherID
 	cfgFP := make(map[string]struct{}, len(sc.IdentityFiles))
 
 	for _, f := range sc.IdentityFiles {
-		s, err := loadPrivateKey(f)
+		s, err := loadPrivateKeyInteractive(f, sc.prompter)
 		if err != nil {
 			log.Warningf("key file %q could not be added: %v", f, err)
 			// Here we still try to load the corresponding public key to mark it configured
@@ -451,17 +452,36 @@ func (sc *SSHConfig) EnsureUser() {
 	}
 }
 
-func loadPrivateKey(path string) (ssh.Signer, error) {
+// loadPrivateKeyInteractive parses a private key file, prompting for a
+// passphrase when the key is encrypted and a prompter is available. A nil
+// prompter means non-interactive operation: encrypted keys then fail instead
+// of blocking on input.
+func loadPrivateKeyInteractive(path string, prompter auth.Prompter) (ssh.Signer, error) {
 	if path == "" {
 		return nil, fmt.Errorf("no key specified")
 	}
 	key, err := os.ReadFile(paths.ReplaceTilde(path))
 	if err != nil {
-		return nil, fmt.Errorf("could not read key: %v", err)
+		return nil, fmt.Errorf("could not read key %q: %w", path, err)
 	}
 	signer, err := ssh.ParsePrivateKey(key)
+	if err == nil {
+		return signer, nil
+	}
+	var missing *ssh.PassphraseMissingError
+	if !errors.As(err, &missing) {
+		return nil, fmt.Errorf("could not parse key %q: %w", path, err)
+	}
+	if prompter == nil {
+		return nil, fmt.Errorf("key %q is encrypted and no prompter is set", path)
+	}
+	pass, err := auth.Passphrase(prompter, path)
 	if err != nil {
-		return nil, fmt.Errorf("could not parse key: %v", err)
+		return nil, err
+	}
+	signer, err = ssh.ParsePrivateKeyWithPassphrase(key, []byte(pass))
+	if err != nil {
+		return nil, fmt.Errorf("could not decrypt key %q: %w", path, err)
 	}
 	return signer, nil
 }
