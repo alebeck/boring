@@ -5,7 +5,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -108,50 +107,6 @@ func sendCmd(cmd daemon.Cmd) (*daemon.Resp, error) {
 	return &resp, nil
 }
 
-// answerPrompt decodes one AuthPrompt, asks the user via prompter, and writes
-// the AuthReply back to the daemon.
-func answerPrompt(conn net.Conn, env daemon.Envelope, prompter auth.Prompter) error {
-	p, err := daemon.DecodeAuthPrompt(env)
-	if err != nil {
-		return err
-	}
-	ans, perr := prompter.Prompt(p.Name, p.Instruction, p.Questions, p.Echo)
-	reply := daemon.AuthReply{Answers: ans}
-	if perr != nil {
-		reply.Err = perr.Error()
-	}
-	return daemon.WriteMsg(conn, daemon.MsgAuthReply, reply)
-}
-
-// runOpenExchange drives the multi-message Open exchange on conn: it sends cmd,
-// answers any AuthPrompt messages via prompter, and returns the final Resp.
-func runOpenExchange(conn net.Conn, cmd daemon.Cmd, prompter auth.Prompter) (*daemon.Resp, error) {
-	if err := ipc.Write(cmd, conn); err != nil {
-		return nil, err
-	}
-	br := bufio.NewReader(conn)
-	for {
-		env, err := daemon.ReadEnvelope(br)
-		if err != nil {
-			return nil, err
-		}
-		switch env.Type {
-		case daemon.MsgAuthPrompt:
-			if err := answerPrompt(conn, env, prompter); err != nil {
-				return nil, err
-			}
-		case daemon.MsgResp:
-			resp, err := daemon.DecodeResp(env)
-			if err != nil {
-				return nil, err
-			}
-			return &resp, nil
-		default:
-			return nil, fmt.Errorf("unexpected message type %q from daemon", env.Type)
-		}
-	}
-}
-
 // sendOpen connects to the daemon and runs the Open exchange.
 func sendOpen(cmd daemon.Cmd, prompter auth.Prompter) (*daemon.Resp, error) {
 	conn, err := connectDaemon()
@@ -159,7 +114,7 @@ func sendOpen(cmd daemon.Cmd, prompter auth.Prompter) (*daemon.Resp, error) {
 		return nil, err
 	}
 	defer conn.Close()
-	return runOpenExchange(conn, cmd, prompter)
+	return daemon.RunOpenExchange(conn, cmd, prompter)
 }
 
 // probeDaemon checks whether a daemon on the default socket is responsive,
