@@ -16,3 +16,12 @@ type Forward struct {
 	RemoteAddress StringOrInt `toml:"remote,omitempty" json:"remote,omitempty"`
 	Mode          Mode        `toml:"mode,omitempty" json:"mode"`
 }
+
+// label returns a human-readable identifier for the forward, used in error
+// messages and logs: its configured Name, or its local address when unnamed.
+func (f Forward) label() string {
+	if f.Name != "" {
+		return f.Name
+	}
+	return string(f.LocalAddress)
+}

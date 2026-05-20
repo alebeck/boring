@@ -58,15 +58,15 @@ type Tunnel struct {
 	interactive bool
 	// prompter supplies interactive auth answers (2FA codes, key passphrases).
 	// A nil prompter means non-interactive.
-	prompter   auth.Prompter
-	hops       []ssh_config.Hop
-	Closed     chan struct{}
-	stop       chan struct{}
-	listener   net.Listener
-	wg         sync.WaitGroup
-	client     *ssh.Client
-	localAddr  *address
-	remoteAddr *address
+	prompter auth.Prompter
+	hops     []ssh_config.Hop
+	Closed   chan struct{}
+	stop     chan struct{}
+	wg       sync.WaitGroup
+	client   *ssh.Client
+	// forwards holds one runtime entry per Forward: a tunnel owns a single SSH
+	// connection (client) and one listener per forward. Populated by prepare().
+	forwards []*forwardRuntime
 	*Desc
 }
 
@@ -120,10 +120,10 @@ func (t *Tunnel) Open() (err error) {
 	}
 	log.Debugf("%v: connected to server", t.Name)
 
-	if err = t.makeListener(); err != nil {
+	if err = t.makeListeners(); err != nil {
+		t.client.Close()
 		return fmt.Errorf("cannot listen: %v", err)
 	}
-	log.Debugf("%v: listening on %v", t.Name, t.listener.Addr())
 
 	if t.stop == nil {
 		t.stop = make(chan struct{})
@@ -175,19 +175,33 @@ func (t *Tunnel) prepare() error {
 		return err
 	}
 
-	allowShort := t.Mode == Remote || t.Mode == RemoteSocks
-	t.remoteAddr, err = parseAddr(string(t.RemoteAddress), allowShort)
-	if err != nil {
-		return fmt.Errorf("remote address: %v", err)
-	}
-
-	t.localAddr, err = parseAddr(string(t.LocalAddress), !allowShort)
-	if err != nil {
-		return fmt.Errorf("local address: %v", err)
+	// Address parsing is per-forward: each Forward carries its own
+	// local/remote addresses and mode. The connection-level resolution above
+	// runs once for the whole tunnel.
+	if err = t.prepareForwards(); err != nil {
+		return err
 	}
 
 	t.prepared = true
 
+	return nil
+}
+
+// prepareForwards builds the per-forward runtime slice, parsing every Forward's
+// local/remote addresses for its own mode. Every loaded tunnel has at least one
+// forward; an empty Forwards slice is a programming error.
+func (t *Tunnel) prepareForwards() error {
+	if len(t.Forwards) == 0 {
+		return fmt.Errorf("tunnel has no forwards")
+	}
+	t.forwards = make([]*forwardRuntime, 0, len(t.Forwards))
+	for _, f := range t.Forwards {
+		fr, err := parseForward(f)
+		if err != nil {
+			return fmt.Errorf("forward %q: %v", f.label(), err)
+		}
+		t.forwards = append(t.forwards, fr)
+	}
 	return nil
 }
 
@@ -249,17 +263,45 @@ func wrapClient(old *ssh.Client, addr string, conf *ssh.ClientConfig) (*ssh.Clie
 	return ssh.NewClient(ncc, chans, reqs), nil
 }
 
-func (t *Tunnel) makeListener() (err error) {
-	if t.Mode == Remote || t.Mode == RemoteSocks {
-		t.listener, err = t.client.Listen(t.remoteAddr.net, t.remoteAddr.addr)
+// makeListeners binds one listener per forward. It is atomic: if any forward's
+// listener fails to bind, every listener already created in this call is closed
+// and an error naming the offending forward is returned, so a tunnel never
+// opens partially.
+func (t *Tunnel) makeListeners() error {
+	for _, fr := range t.forwards {
+		if err := t.makeListener(fr); err != nil {
+			t.closeListeners()
+			return fmt.Errorf("forward %q: %v", fr.label(), err)
+		}
+		log.Debugf("%v: forward %q listening on %v",
+			t.Name, fr.label(), fr.listener.Addr())
+	}
+	return nil
+}
+
+// makeListener binds a single forward's listener: a remote listener requested
+// from the server for remote/socks-remote modes, a local socket otherwise.
+func (t *Tunnel) makeListener(fr *forwardRuntime) (err error) {
+	if fr.isRemote() {
+		fr.listener, err = t.client.Listen(fr.remoteAddr.net, fr.remoteAddr.addr)
 	} else {
-		t.listener, err = net.Listen(t.localAddr.net, t.localAddr.addr)
+		fr.listener, err = net.Listen(fr.localAddr.net, fr.localAddr.addr)
 	}
 	return
 }
 
-func (t *Tunnel) dial(network, addr string) (net.Conn, error) {
-	if t.Mode == Remote || t.Mode == RemoteSocks {
+// closeListeners closes every forward listener that is currently open.
+func (t *Tunnel) closeListeners() {
+	for _, fr := range t.forwards {
+		if fr.listener != nil {
+			fr.listener.Close()
+			fr.listener = nil
+		}
+	}
+}
+
+func (t *Tunnel) dial(fr *forwardRuntime, network, addr string) (net.Conn, error) {
+	if fr.isRemote() {
 		return net.Dial(network, addr)
 	}
 	return t.client.Dial(network, addr)
@@ -272,8 +314,12 @@ func (t *Tunnel) run() {
 		close(disconn)
 	}()
 
+	// Keep-alive runs once for the single shared client; one connection
+	// handler runs per forward.
 	go t.waitFor(func() { t.keepAlive(disconn) })
-	go t.waitFor(func() { t.handleConns() })
+	for _, fr := range t.forwards {
+		go t.waitFor(func() { t.handleConns(fr) })
+	}
 
 	stopped := false
 	select {
@@ -283,7 +329,7 @@ func (t *Tunnel) run() {
 		t.client.Close()
 	case <-disconn:
 	}
-	t.listener.Close()
+	t.closeListeners()
 	t.wg.Wait()
 	if t.shouldReconnect(stopped) {
 		if err := t.reconnectLoop(); err != nil {
@@ -340,31 +386,33 @@ func (t *Tunnel) keepAlive(cancel chan struct{}) {
 	}
 }
 
-func (t *Tunnel) handleConns() {
-	defer t.listener.Close()
+func (t *Tunnel) handleConns(fr *forwardRuntime) {
+	defer fr.listener.Close()
 	defer t.client.Close()
-	if t.Mode == Local || t.Mode == Remote {
-		t.handleForward()
+	if fr.isSocks() {
+		t.handleSocks(fr)
 		return
 	}
-	t.handleSocks()
+	t.handleForward(fr)
 }
 
-func (t *Tunnel) handleForward() {
+func (t *Tunnel) handleForward(fr *forwardRuntime) {
 	for {
-		conn1, err := t.listener.Accept()
+		conn1, err := fr.listener.Accept()
 		if err != nil {
-			log.Errorf("%v: could not accept: %v", t.Name, err)
+			log.Errorf("%v: forward %q could not accept: %v",
+				t.Name, fr.label(), err)
 			return
 		}
 		go t.waitFor(func() {
-			addr := t.remoteAddr
-			if t.Mode == Remote || t.Mode == RemoteSocks {
-				addr = t.localAddr
+			addr := fr.remoteAddr
+			if fr.isRemote() {
+				addr = fr.localAddr
 			}
-			conn2, err := t.dial(addr.net, addr.addr)
+			conn2, err := t.dial(fr, addr.net, addr.addr)
 			if err != nil {
-				log.Errorf("%v: could not dial: %v", t.Name, err)
+				log.Errorf("%v: forward %q could not dial: %v",
+					t.Name, fr.label(), err)
 				return
 			}
 			tunnel(conn1, conn2)
@@ -390,16 +438,17 @@ func tunnel(c1, c2 net.Conn) {
 	<-done
 }
 
-func (t *Tunnel) handleSocks() {
+func (t *Tunnel) handleSocks(fr *forwardRuntime) {
 	serv := &proxy.Server{
 		Dialer: func(ctx context.Context, netw, addr string) (net.Conn, error) {
-			return t.dial(netw, addr)
+			return t.dial(fr, netw, addr)
 		},
 	}
 	for {
-		conn, err := t.listener.Accept()
+		conn, err := fr.listener.Accept()
 		if err != nil {
-			log.Errorf("%v: could not accept: %v", t.Name, err)
+			log.Errorf("%v: forward %q could not accept: %v",
+				t.Name, fr.label(), err)
 			return
 		}
 		go t.waitFor(func() { serv.ServeConn(conn) })

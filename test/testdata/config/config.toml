@@ -62,3 +62,17 @@ name = "test-bad-fwd-config"
 host = "127.0.0.1"
 local = "49711"
 remote = "49712"
+
+[[tunnels]]
+name = "test-multi"
+host = "127.0.0.1"
+
+  [[tunnels.forward]]
+  name = "first"
+  local = "localhost:49731"
+  remote = "localhost:49732"
+
+  [[tunnels.forward]]
+  name = "second"
+  local = "localhost:49733"
+  remote = "localhost:49734"

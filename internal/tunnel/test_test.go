@@ -20,8 +20,10 @@ func ptr(i int) *int { return &i }
 
 func TestConnectionUnreachable(t *testing.T) {
 	d := &Desc{
-		Name: "x", Host: "127.0.0.1", Port: ptr(1), Mode: Local,
-		LocalAddress: "9000", RemoteAddress: "localhost:9000",
+		Name: "x", Host: "127.0.0.1", Port: ptr(1),
+		Forwards: []Forward{
+			{LocalAddress: "9000", RemoteAddress: "localhost:9000", Mode: Local},
+		},
 	}
 	res := TestConnection(d, nil)
 	if res.OK {
