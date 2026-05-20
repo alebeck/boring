@@ -117,8 +117,9 @@ func (t *Tunnel) prepare() error {
 
 	sc.EnsureUser()
 
-	// Infer series of hops from ssh config
-	if t.hops, err = sc.ToHops(); err != nil {
+	// Infer series of hops from ssh config.
+	// A nil prompter means non-interactive; task 4.4 will pass a real one.
+	if t.hops, err = sc.ToHops(nil); err != nil {
 		return err
 	}
 

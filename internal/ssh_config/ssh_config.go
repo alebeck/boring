@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/alebeck/boring/internal/agent"
+	"github.com/alebeck/boring/internal/auth"
 	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/paths"
 	ossh_config "github.com/alebeck/ssh_config"
@@ -59,6 +60,11 @@ type SSHConfig struct {
 	HostKeyAlgos     []string
 	KexAlgos         []string
 	Jumps            []*jumpSpec
+
+	// prompter handles interactive authentication. A nil prompter means
+	// non-interactive operation. It is carried through hop construction so
+	// that interactive auth methods and passphrase prompting can reach it.
+	prompter auth.Prompter
 }
 
 var (
@@ -142,8 +148,11 @@ func ParseSSHConfig(alias, user string) (*SSHConfig, error) {
 	return c, nil
 }
 
-// ToHops creates an ordered series of Hops from an SSHConfig
-func (sc *SSHConfig) ToHops() ([]Hop, error) {
+// ToHops creates an ordered series of Hops from an SSHConfig. The given
+// prompter is used for interactive authentication; pass nil for
+// non-interactive operation.
+func (sc *SSHConfig) ToHops(prompter auth.Prompter) ([]Hop, error) {
+	sc.prompter = prompter
 	return sc.toHopsImpl(false, 0)
 }
 
@@ -181,6 +190,9 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 		}
 
 		jc.EnsureUser()
+
+		// Propagate the prompter so interactive auth reaches every hop
+		jc.prompter = sc.prompter
 
 		// Recursively connect to first jump host, ignore jumps for subsequent connections;
 		// this corresponds to ssh(1) behavior
