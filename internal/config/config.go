@@ -76,6 +76,17 @@ func loadFrom(path string) (*Config, error) {
 		}
 	}
 
+	// Validate the raw, pre-normalization state of each tunnel: a tunnel must
+	// define at least one forward and must not mix the legacy local/remote
+	// shorthand with [[tunnels.forward]] blocks. This runs before
+	// normalizeForwards folds the shorthand away, since both checks need to
+	// know which form was actually used in the file.
+	for i := range cfg.Tunnels {
+		if err := validateRawForwards(&cfg.Tunnels[i]); err != nil {
+			return nil, err
+		}
+	}
+
 	// Normalize every tunnel so Forwards is always populated (length >= 1).
 	// A tunnel with no [[tunnels.forward]] blocks gets a single implicit
 	// forward built from the legacy local/remote/mode shorthand. This runs
@@ -104,6 +115,29 @@ func loadFrom(path string) (*Config, error) {
 
 	cfg.TunnelsMap = m
 	return &cfg, nil
+}
+
+// validateRawForwards checks a tunnel's forward declaration before the legacy
+// shorthand is folded into Forwards. It enforces two rules that depend on the
+// raw form used in the config file:
+//
+//   - A tunnel must not set both the legacy local/remote shorthand and one or
+//     more [[tunnels.forward]] blocks.
+//   - A tunnel must define at least one forward, via either form.
+//
+// Only the addresses are consulted to decide whether the shorthand was used:
+// mode defaults to its zero value and so cannot reliably signal "set".
+func validateRawForwards(t *tunnel.Desc) error {
+	hasShorthand := t.LocalAddress != "" || t.RemoteAddress != ""
+	hasBlocks := len(t.Forwards) > 0
+	if hasShorthand && hasBlocks {
+		return fmt.Errorf("tunnel %q: set either local/remote or "+
+			"[[tunnels.forward]], not both", t.Name)
+	}
+	if !hasShorthand && !hasBlocks {
+		return fmt.Errorf("tunnel %q: no forward defined", t.Name)
+	}
+	return nil
 }
 
 // normalizeForwards ensures a tunnel's Forwards slice has at least one entry.

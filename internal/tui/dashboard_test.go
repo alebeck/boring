@@ -29,7 +29,14 @@ func keyMsg(r rune) tea.KeyMsg {
 func dashboardWithRows(names ...string) dashboard {
 	descs := make([]tunnel.Desc, len(names))
 	for i, n := range names {
-		descs[i] = tunnel.Desc{Name: n, Host: "example.com"}
+		// Each tunnel needs a forward, otherwise config.Load rejects it on
+		// the reload that follows a save (e.g. after a delete).
+		descs[i] = tunnel.Desc{
+			Name:          n,
+			Host:          "example.com",
+			LocalAddress:  "9000",
+			RemoteAddress: "localhost:9000",
+		}
 	}
 	return newDashboard(&config.Config{Tunnels: descs}, &tuiPrompter{})
 }

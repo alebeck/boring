@@ -86,9 +86,10 @@ func TestDeleteConfirmRemovesTunnel(t *testing.T) {
 	t.Cleanup(func() { config.Path = saved })
 
 	// Seed an on-disk config with two tunnels so reload has something to read.
+	// Each tunnel needs a forward, otherwise config.Load rejects it.
 	seed := &config.Config{Tunnels: []tunnel.Desc{
-		{Name: "dev", Host: "example.com"},
-		{Name: "prod", Host: "example.com"},
+		{Name: "dev", Host: "example.com", LocalAddress: "9000", RemoteAddress: "localhost:9000"},
+		{Name: "prod", Host: "example.com", LocalAddress: "9001", RemoteAddress: "localhost:9001"},
 	}}
 	if err := config.Save(seed, cfgPath); err != nil {
 		t.Fatalf("seeding config failed: %v", err)
@@ -138,8 +139,8 @@ func TestDeleteConfirmViaEnter(t *testing.T) {
 	t.Cleanup(func() { config.Path = saved })
 
 	seed := &config.Config{Tunnels: []tunnel.Desc{
-		{Name: "dev", Host: "example.com"},
-		{Name: "prod", Host: "example.com"},
+		{Name: "dev", Host: "example.com", LocalAddress: "9000", RemoteAddress: "localhost:9000"},
+		{Name: "prod", Host: "example.com", LocalAddress: "9001", RemoteAddress: "localhost:9001"},
 	}}
 	if err := config.Save(seed, cfgPath); err != nil {
 		t.Fatalf("seeding config failed: %v", err)

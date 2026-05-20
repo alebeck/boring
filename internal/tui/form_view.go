@@ -16,7 +16,7 @@ func (f tunnelForm) title() string {
 
 // modeValue is the canonical mode string shown in the Mode selector row.
 func (f tunnelForm) modeValue() string {
-	return modeName(f.mode)
+	return f.mode.ConfigValue()
 }
 
 // formRow renders one "label: value" line, highlighting it when focused.

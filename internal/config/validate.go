@@ -31,7 +31,52 @@ func Validate(tunnels []tunnel.Desc) error {
 				" start with special characters, or contain glob characters \"*?[\"."+
 				" Found '%v'", t.Group)
 		}
+		if err := validateForwards(t); err != nil {
+			return err
+		}
 		seen[t.Name] = struct{}{}
+	}
+	return nil
+}
+
+// validateForwards checks a tunnel's normalized Forwards slice: every forward
+// must carry the addresses its mode requires, and any forward names that are
+// set must be unique within the tunnel. It assumes Forwards has been populated
+// (length >= 1) by config.Load.
+func validateForwards(t *tunnel.Desc) error {
+	seen := make(map[string]struct{})
+	for i := range t.Forwards {
+		f := &t.Forwards[i]
+		if err := validateForwardAddresses(t.Name, f); err != nil {
+			return err
+		}
+		if f.Name == "" {
+			continue
+		}
+		if _, dup := seen[f.Name]; dup {
+			return fmt.Errorf("tunnel %q: duplicate forward name %q",
+				t.Name, f.Name)
+		}
+		seen[f.Name] = struct{}{}
+	}
+	return nil
+}
+
+// validateForwardAddresses checks that a forward defines the local/remote
+// addresses required by its mode: local is required for local, remote and
+// socks modes, remote is required for local, remote and socks-remote modes.
+func validateForwardAddresses(tunnelName string, f *tunnel.Forward) error {
+	needsLocal := f.Mode == tunnel.Local || f.Mode == tunnel.Remote ||
+		f.Mode == tunnel.Socks
+	if needsLocal && f.LocalAddress == "" {
+		return fmt.Errorf("tunnel %q: forward in %v mode needs a local address",
+			tunnelName, f.Mode.ConfigValue())
+	}
+	needsRemote := f.Mode == tunnel.Local || f.Mode == tunnel.Remote ||
+		f.Mode == tunnel.RemoteSocks
+	if needsRemote && f.RemoteAddress == "" {
+		return fmt.Errorf("tunnel %q: forward in %v mode needs a remote address",
+			tunnelName, f.Mode.ConfigValue())
 	}
 	return nil
 }

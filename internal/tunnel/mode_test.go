@@ -31,8 +31,8 @@ func TestModeConfigValueRoundTrip(t *testing.T) {
 		if err := m.UnmarshalTOML(name); err != nil {
 			t.Fatalf("UnmarshalTOML(%q): %v", name, err)
 		}
-		if m.configValue() != name {
-			t.Fatalf("round trip: got %q, want %q", m.configValue(), name)
+		if m.ConfigValue() != name {
+			t.Fatalf("round trip: got %q, want %q", m.ConfigValue(), name)
 		}
 	}
 }

@@ -44,10 +44,10 @@ func (m Mode) String() string {
 	return "<-"
 }
 
-// configValue returns the canonical TOML representation of the mode — the same
+// ConfigValue returns the canonical TOML representation of the mode — the same
 // strings UnmarshalTOML accepts. (String() returns a display arrow instead and
-// must not be used for encoding.)
-func (m Mode) configValue() string {
+// must not be used for encoding or error messages.)
+func (m Mode) ConfigValue() string {
 	switch m {
 	case Remote:
 		return "remote"
@@ -65,5 +65,5 @@ func (m Mode) configValue() string {
 // deliberately NOT encoding.TextMarshaler: Desc.Mode is also JSON-encoded over
 // the IPC socket, and a TextMarshaler would change that wire format too.
 func (m Mode) MarshalTOML() ([]byte, error) {
-	return []byte(strconv.Quote(m.configValue())), nil
+	return []byte(strconv.Quote(m.ConfigValue())), nil
 }

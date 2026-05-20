@@ -106,12 +106,13 @@ user = "deploy"
 }
 
 func TestLoadForwardsNeverEmpty(t *testing.T) {
-	// Even a minimal tunnel with no addresses gets a single implicit forward.
+	// A legacy socks tunnel folds its shorthand into a single implicit forward.
 	path := writeConfig(t, `
 [[tunnels]]
-name = "socks"
-host = "vps"
-mode = "socks"
+name  = "socks"
+host  = "vps"
+local = "1080"
+mode  = "socks"
 `)
 	cfg, err := loadFrom(path)
 	if err != nil {
@@ -123,5 +124,202 @@ mode = "socks"
 	}
 	if d.Forwards[0].Mode != tunnel.Socks {
 		t.Errorf("implicit forward mode = %v, want Socks", d.Forwards[0].Mode)
+	}
+}
+
+// TestLoadForwardsValidation exercises the multi-forward validation rules
+// enforced by config.Load: both-set, no-forward, per-forward required
+// addresses, and forward-name uniqueness.
+func TestLoadForwardsValidation(t *testing.T) {
+	cases := []struct {
+		name    string
+		config  string
+		wantErr bool
+	}{
+		{
+			name: "valid multi-forward",
+			config: `
+[[tunnels]]
+name = "prod"
+host = "bastion"
+
+  [[tunnels.forward]]
+  name   = "db"
+  local  = "5432"
+  remote = "db.internal:5432"
+
+  [[tunnels.forward]]
+  name   = "cache"
+  local  = "6379"
+  remote = "redis.internal:6379"
+`,
+			wantErr: false,
+		},
+		{
+			name: "valid single-forward block",
+			config: `
+[[tunnels]]
+name = "web"
+host = "vps"
+
+  [[tunnels.forward]]
+  local  = "8080"
+  remote = "localhost:8080"
+`,
+			wantErr: false,
+		},
+		{
+			name: "both legacy shorthand and forward blocks",
+			config: `
+[[tunnels]]
+name   = "mixed"
+host   = "bastion"
+local  = "9000"
+remote = "localhost:9000"
+
+  [[tunnels.forward]]
+  local  = "5432"
+  remote = "db.internal:5432"
+`,
+			wantErr: true,
+		},
+		{
+			name: "no forward defined",
+			config: `
+[[tunnels]]
+name = "empty"
+host = "bastion"
+`,
+			wantErr: true,
+		},
+		{
+			name: "local-mode forward missing local address",
+			config: `
+[[tunnels]]
+name = "prod"
+host = "bastion"
+
+  [[tunnels.forward]]
+  remote = "db.internal:5432"
+  mode   = "local"
+`,
+			wantErr: true,
+		},
+		{
+			name: "remote-mode forward missing remote address",
+			config: `
+[[tunnels]]
+name = "prod"
+host = "bastion"
+
+  [[tunnels.forward]]
+  local = "8080"
+  mode  = "remote"
+`,
+			wantErr: true,
+		},
+		{
+			name: "remote-mode forward missing local address",
+			config: `
+[[tunnels]]
+name = "prod"
+host = "bastion"
+
+  [[tunnels.forward]]
+  remote = "8080"
+  mode   = "remote"
+`,
+			wantErr: true,
+		},
+		{
+			name: "duplicate forward name",
+			config: `
+[[tunnels]]
+name = "prod"
+host = "bastion"
+
+  [[tunnels.forward]]
+  name   = "svc"
+  local  = "5432"
+  remote = "db.internal:5432"
+
+  [[tunnels.forward]]
+  name   = "svc"
+  local  = "6379"
+  remote = "redis.internal:6379"
+`,
+			wantErr: true,
+		},
+		{
+			name: "two unnamed forwards are allowed",
+			config: `
+[[tunnels]]
+name = "prod"
+host = "bastion"
+
+  [[tunnels.forward]]
+  local  = "5432"
+  remote = "db.internal:5432"
+
+  [[tunnels.forward]]
+  local  = "6379"
+  remote = "redis.internal:6379"
+`,
+			wantErr: false,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			path := writeConfig(t, c.config)
+			_, err := loadFrom(path)
+			if (err != nil) != c.wantErr {
+				t.Fatalf("loadFrom() error = %v, wantErr %v", err, c.wantErr)
+			}
+		})
+	}
+}
+
+// TestLoadLegacyConfigsStillLoad confirms existing single-forward and legacy
+// configs keep loading unchanged after the multi-forward validation was added.
+func TestLoadLegacyConfigsStillLoad(t *testing.T) {
+	cases := []string{
+		`
+[[tunnels]]
+name   = "dev"
+host   = "devhost"
+local  = "9000"
+remote = "localhost:9000"
+`,
+		`
+[[tunnels]]
+name   = "rev"
+host   = "vps"
+local  = "localhost:8080"
+remote = "8080"
+mode   = "remote"
+`,
+		`
+[[tunnels]]
+name  = "socks"
+host  = "vps"
+local = "1080"
+mode  = "socks"
+`,
+		`
+[[tunnels]]
+name   = "rsocks"
+host   = "vps"
+remote = "1080"
+mode   = "socks-remote"
+`,
+	}
+	for i, cfg := range cases {
+		t.Run(cfg, func(t *testing.T) {
+			path := writeConfig(t, cfg)
+			if _, err := loadFrom(path); err != nil {
+				t.Fatalf("case %d: loadFrom: %v", i, err)
+			}
+		})
 	}
 }

@@ -39,22 +39,6 @@ var formModes = []tunnel.Mode{
 	tunnel.Local, tunnel.Remote, tunnel.Socks, tunnel.RemoteSocks,
 }
 
-// modeName returns the canonical config name for a mode, used in the selector.
-// tunnel.Mode.String() renders a display arrow, not a name, so it cannot be
-// used here.
-func modeName(m tunnel.Mode) string {
-	switch m {
-	case tunnel.Remote:
-		return "remote"
-	case tunnel.Socks:
-		return "socks"
-	case tunnel.RemoteSocks:
-		return "socks-remote"
-	default:
-		return "local"
-	}
-}
-
 // formLabels are the field labels in tab order. The Mode label sits at modeIndex.
 var formLabels = []string{
 	"Name", "Host", "Local", "Remote",
