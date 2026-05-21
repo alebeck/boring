@@ -96,6 +96,101 @@ func TestTunnelTableUnnamedForwardLabel(t *testing.T) {
 	}
 }
 
+// TestTunnelTableSocksForward proves a socks forward renders [SOCKS] for its
+// unused remote side, and a socks-remote forward for its unused local side, in
+// `boring list`. The local-mode forward keeps its plain addresses.
+func TestTunnelTableSocksForward(t *testing.T) {
+	log.Init(io.Discard, false, false)
+
+	t.Run("socks shows label for the remote side", func(t *testing.T) {
+		d := &tunnel.Desc{
+			Name: "proxy", Host: "vps", Status: tunnel.Closed,
+			Forwards: []tunnel.Forward{
+				{LocalAddress: "1080", Mode: tunnel.Socks},
+			},
+		}
+		out := stripANSI(tunnelTable([]*tunnel.Desc{d}).String())
+		rows := nonEmptyLines(out)
+		want := []string{"closed", "proxy", "1080", "->", "[SOCKS]", "vps"}
+		if got := strings.Fields(rows[1]); !equalSlice(got, want) {
+			t.Errorf("socks inline row = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("socks-remote shows label for the local side", func(t *testing.T) {
+		d := &tunnel.Desc{
+			Name: "rproxy", Host: "vps", Status: tunnel.Closed,
+			Forwards: []tunnel.Forward{
+				{RemoteAddress: "1080", Mode: tunnel.RemoteSocks},
+			},
+		}
+		out := stripANSI(tunnelTable([]*tunnel.Desc{d}).String())
+		rows := nonEmptyLines(out)
+		want := []string{"closed", "rproxy", "[SOCKS]", "<-", "1080", "vps"}
+		if got := strings.Fields(rows[1]); !equalSlice(got, want) {
+			t.Errorf("socks-remote inline row = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("local forward keeps plain addresses", func(t *testing.T) {
+		d := &tunnel.Desc{
+			Name: "dev", Host: "devhost", Status: tunnel.Closed,
+			Forwards: []tunnel.Forward{
+				{LocalAddress: "9000", RemoteAddress: "localhost:9000", Mode: tunnel.Local},
+			},
+		}
+		out := stripANSI(tunnelTable([]*tunnel.Desc{d}).String())
+		if strings.Contains(out, "[SOCKS]") {
+			t.Errorf("local forward must not render [SOCKS]:\n%s", out)
+		}
+	})
+}
+
+// TestDescribeForwards proves the `boring open` confirmation message renders
+// each forward via DisplayLocal/DisplayRemote, so a socks forward shows [SOCKS]
+// for its unused side rather than a trailing blank, agreeing with `boring list`
+// and the TUI.
+func TestDescribeForwards(t *testing.T) {
+	t.Run("socks forward shows label for the remote side", func(t *testing.T) {
+		d := &tunnel.Desc{
+			Forwards: []tunnel.Forward{
+				{LocalAddress: "1080", Mode: tunnel.Socks},
+			},
+		}
+		got := describeForwards(d)
+		if !strings.Contains(got, tunnel.SocksLabel) {
+			t.Errorf("socks forward description = %q, want it to contain %q", got, tunnel.SocksLabel)
+		}
+	})
+
+	t.Run("socks-remote forward shows label for the local side", func(t *testing.T) {
+		d := &tunnel.Desc{
+			Forwards: []tunnel.Forward{
+				{RemoteAddress: "1080", Mode: tunnel.RemoteSocks},
+			},
+		}
+		got := describeForwards(d)
+		if !strings.Contains(got, tunnel.SocksLabel) {
+			t.Errorf("socks-remote forward description = %q, want it to contain %q", got, tunnel.SocksLabel)
+		}
+	})
+
+	t.Run("local forward keeps plain addresses", func(t *testing.T) {
+		d := &tunnel.Desc{
+			Forwards: []tunnel.Forward{
+				{LocalAddress: "8080", RemoteAddress: "80", Mode: tunnel.Local},
+			},
+		}
+		got := describeForwards(d)
+		if strings.Contains(got, tunnel.SocksLabel) {
+			t.Errorf("local forward description = %q, must not contain %q", got, tunnel.SocksLabel)
+		}
+		if !strings.Contains(got, "8080") || !strings.Contains(got, "80") {
+			t.Errorf("local forward description = %q, want plain addresses", got)
+		}
+	})
+}
+
 // nonEmptyLines splits rendered output into lines, trimming trailing spaces
 // and dropping blank lines.
 func nonEmptyLines(s string) []string {

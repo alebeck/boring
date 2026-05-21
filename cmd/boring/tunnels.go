@@ -232,7 +232,7 @@ func describeForwards(t *tunnel.Desc) string {
 	parts := make([]string, 0, len(t.Forwards))
 	for _, f := range t.Forwards {
 		parts = append(parts, fmt.Sprintf("%s %v %s",
-			f.LocalAddress, f.Mode, f.RemoteAddress))
+			f.DisplayLocal(), f.Mode, f.DisplayRemote()))
 	}
 	return strings.Join(parts, ", ")
 }
@@ -385,9 +385,9 @@ func forwardRows(t *tunnel.Desc) []table.ForwardRow {
 	for _, f := range t.Forwards {
 		rows = append(rows, table.ForwardRow{
 			Label:  f.Label(),
-			Local:  f.LocalAddress.String(),
+			Local:  f.DisplayLocal(),
 			Mode:   f.Mode.String(),
-			Remote: f.RemoteAddress.String(),
+			Remote: f.DisplayRemote(),
 		})
 	}
 	return rows

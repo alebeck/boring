@@ -1,5 +1,12 @@
 package tunnel
 
+// SocksLabel is the display-only placeholder shown for the unused address side
+// of a socks-mode forward: the remote side of a Socks forward, the local side
+// of a RemoteSocks forward. It is derived at render time by DisplayLocal /
+// DisplayRemote — never stored on a Forward and never written to the config
+// file.
+const SocksLabel = "[SOCKS]"
+
 // Forward is one port forwarding carried over a tunnel's SSH connection.
 //
 // A tunnel owns a single SSH connection and one or more forwards. Each forward
@@ -25,4 +32,26 @@ func (f Forward) Label() string {
 		return f.Name
 	}
 	return string(f.LocalAddress)
+}
+
+// DisplayLocal returns the local address as it should appear in `boring list`
+// and the TUI: SocksLabel for a RemoteSocks forward (whose local side is
+// unused), the raw local address otherwise. It is the single shared source of
+// the displayed local value so the two renderers cannot diverge.
+func (f Forward) DisplayLocal() string {
+	if f.Mode == RemoteSocks {
+		return SocksLabel
+	}
+	return f.LocalAddress.String()
+}
+
+// DisplayRemote returns the remote address as it should appear in `boring list`
+// and the TUI: SocksLabel for a Socks forward (whose remote side is unused),
+// the raw remote address otherwise. It is the single shared source of the
+// displayed remote value so the two renderers cannot diverge.
+func (f Forward) DisplayRemote() string {
+	if f.Mode == Socks {
+		return SocksLabel
+	}
+	return f.RemoteAddress.String()
 }

@@ -213,9 +213,9 @@ mode  = "socks"
 	if err != nil {
 		t.Fatalf("reading saved config: %v", err)
 	}
-	// config.Load rewrites a socks tunnel's tunnel-level RemoteAddress to the
-	// "[SOCKS]" display placeholder; the encoder must encode from Forwards[0]
-	// (the real address) instead, so the placeholder must never reach disk.
+	// The "[SOCKS]" placeholder is a render-time display value only
+	// (tunnel.Forward.DisplayLocal / DisplayRemote); a socks forward stores its
+	// unused address side empty. The placeholder must never reach disk.
 	if strings.Contains(string(data), "[SOCKS]") {
 		t.Fatalf("saved config leaked the [SOCKS] placeholder:\n%s", data)
 	}

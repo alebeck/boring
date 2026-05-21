@@ -122,37 +122,45 @@ func TestFormFromDescMultiForward(t *testing.T) {
 	}
 }
 
-func TestFormFromDescBlanksSocksLabel(t *testing.T) {
+// TestFormFromDescSocksForwardLeavesUnusedSideEmpty proves a socks forward
+// loads into the form with its unused (remote) side empty. The [SOCKS]
+// placeholder is render-time only and never stored, so the form simply shows
+// the stored empty value with no special blanking.
+func TestFormFromDescSocksForwardLeavesUnusedSideEmpty(t *testing.T) {
 	d := tunnel.Desc{
 		Name: "proxy",
 		Host: "example.com",
 		Forwards: []tunnel.Forward{{
-			Mode:          tunnel.Socks,
-			LocalAddress:  tunnel.StringOrInt("1080"),
-			RemoteAddress: tunnel.StringOrInt(config.SocksLabel),
+			Mode:         tunnel.Socks,
+			LocalAddress: tunnel.StringOrInt("1080"),
 		}},
 	}
 	f := formFromDesc(d)
 	if got := f.forwards[0].remote.Value(); got != "" {
-		t.Fatalf("socks label remote should be blanked, got %q", got)
+		t.Fatalf("socks forward remote should be empty, got %q", got)
 	}
 	if got := f.forwards[0].local.Value(); got != "1080" {
 		t.Fatalf("local should be preserved, got %q", got)
 	}
 }
 
-func TestFormFromDescBlanksReverseSocksLocal(t *testing.T) {
+// TestFormFromDescReverseSocksForwardLeavesUnusedSideEmpty proves a
+// socks-remote forward loads into the form with its unused (local) side empty.
+func TestFormFromDescReverseSocksForwardLeavesUnusedSideEmpty(t *testing.T) {
 	d := tunnel.Desc{
 		Name: "rsocks",
 		Host: "example.com",
 		Forwards: []tunnel.Forward{{
-			Mode:         tunnel.RemoteSocks,
-			LocalAddress: tunnel.StringOrInt(config.SocksLabel),
+			Mode:          tunnel.RemoteSocks,
+			RemoteAddress: tunnel.StringOrInt("1080"),
 		}},
 	}
 	f := formFromDesc(d)
 	if got := f.forwards[0].local.Value(); got != "" {
-		t.Fatalf("reverse-socks label local should be blanked, got %q", got)
+		t.Fatalf("reverse-socks forward local should be empty, got %q", got)
+	}
+	if got := f.forwards[0].remote.Value(); got != "1080" {
+		t.Fatalf("remote should be preserved, got %q", got)
 	}
 }
 

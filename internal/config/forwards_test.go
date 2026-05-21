@@ -127,6 +127,63 @@ mode  = "socks"
 	}
 }
 
+// TestLoadSocksForwardKeepsRealAddresses confirms a socks tunnel loads with its
+// forward carrying the mode and the real (possibly empty) addresses: the
+// [SOCKS] placeholder is derived at render time and must never be stored.
+func TestLoadSocksForwardKeepsRealAddresses(t *testing.T) {
+	t.Run("socks", func(t *testing.T) {
+		path := writeConfig(t, `
+[[tunnels]]
+name  = "socks"
+host  = "vps"
+local = "1080"
+mode  = "socks"
+`)
+		cfg, err := loadFrom(path)
+		if err != nil {
+			t.Fatalf("loadFrom: %v", err)
+		}
+		d := cfg.Tunnels[0]
+		if len(d.Forwards) != 1 {
+			t.Fatalf("expected 1 forward, got %d", len(d.Forwards))
+		}
+		f := d.Forwards[0]
+		if f.Mode != tunnel.Socks {
+			t.Errorf("forward mode = %v, want Socks", f.Mode)
+		}
+		if f.LocalAddress != "1080" {
+			t.Errorf("forward local = %q, want \"1080\"", f.LocalAddress)
+		}
+		if f.RemoteAddress != "" {
+			t.Errorf("socks forward remote should stay empty, got %q", f.RemoteAddress)
+		}
+	})
+
+	t.Run("socks-remote", func(t *testing.T) {
+		path := writeConfig(t, `
+[[tunnels]]
+name   = "rsocks"
+host   = "vps"
+remote = "1080"
+mode   = "socks-remote"
+`)
+		cfg, err := loadFrom(path)
+		if err != nil {
+			t.Fatalf("loadFrom: %v", err)
+		}
+		f := cfg.Tunnels[0].Forwards[0]
+		if f.Mode != tunnel.RemoteSocks {
+			t.Errorf("forward mode = %v, want RemoteSocks", f.Mode)
+		}
+		if f.RemoteAddress != "1080" {
+			t.Errorf("forward remote = %q, want \"1080\"", f.RemoteAddress)
+		}
+		if f.LocalAddress != "" {
+			t.Errorf("socks-remote forward local should stay empty, got %q", f.LocalAddress)
+		}
+	})
+}
+
 // TestLoadForwardsValidation exercises the multi-forward validation rules
 // enforced by config.Load: both-set, no-forward, per-forward required
 // addresses, and forward-name uniqueness.

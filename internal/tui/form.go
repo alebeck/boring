@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/alebeck/boring/internal/config"
 	"github.com/alebeck/boring/internal/tunnel"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -90,14 +89,16 @@ func newForwardFields() forwardFields {
 	}
 }
 
-// forwardFromDesc builds a forward sub-editor entry from a tunnel.Forward. A
-// local/remote value equal to config.SocksLabel is shown empty: that label is
-// display-only and must not be presented back to the user or re-saved.
+// forwardFromDesc builds a forward sub-editor entry from a tunnel.Forward. The
+// [SOCKS] placeholder is a render-time display value only (see
+// tunnel.Forward.DisplayLocal / DisplayRemote): a socks forward's unused
+// address side is stored empty, so the form shows it empty without any
+// blanking.
 func forwardFromDesc(fwd tunnel.Forward) forwardFields {
 	f := newForwardFields()
 	f.name.SetValue(fwd.Name)
-	f.local.SetValue(blankSocksLabel(fwd.LocalAddress.String()))
-	f.remote.SetValue(blankSocksLabel(fwd.RemoteAddress.String()))
+	f.local.SetValue(fwd.LocalAddress.String())
+	f.remote.SetValue(fwd.RemoteAddress.String())
 	f.mode = fwd.Mode
 	return f
 }
@@ -164,14 +165,6 @@ func formFromDesc(d tunnel.Desc) tunnelForm {
 	}
 	f.refocus()
 	return f
-}
-
-// blankSocksLabel returns "" when s is the display-only socks label, else s.
-func blankSocksLabel(s string) string {
-	if s == config.SocksLabel {
-		return ""
-	}
-	return s
 }
 
 // intToString renders an optional int: "" when nil, else the decimal number.

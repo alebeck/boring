@@ -95,6 +95,54 @@ func TestTableViewUnnamedForwardLabel(t *testing.T) {
 	}
 }
 
+// TestTableViewSocksForwardShowsLabel proves the TUI renders [SOCKS] for the
+// unused address side of socks-mode forwards: the remote side of a Socks
+// forward, the local side of a RemoteSocks forward. A local forward must not
+// render the placeholder.
+func TestTableViewSocksForwardShowsLabel(t *testing.T) {
+	t.Run("socks shows label for the remote side", func(t *testing.T) {
+		d := dashboardWithDescs(tunnel.Desc{
+			Name: "proxy", Host: "vps",
+			Forwards: []tunnel.Forward{
+				{LocalAddress: "1080", Mode: tunnel.Socks},
+			},
+		})
+		out := d.View()
+		line, ok := statusRowOf(out, "proxy")
+		if !ok {
+			t.Fatalf("view should contain a row for proxy:\n%s", out)
+		}
+		if !strings.Contains(line, "1080") || !strings.Contains(line, tunnel.SocksLabel) {
+			t.Fatalf("socks row should show local 1080 and [SOCKS], got %q", line)
+		}
+	})
+
+	t.Run("socks-remote shows label for the local side", func(t *testing.T) {
+		d := dashboardWithDescs(tunnel.Desc{
+			Name: "rproxy", Host: "vps",
+			Forwards: []tunnel.Forward{
+				{RemoteAddress: "1080", Mode: tunnel.RemoteSocks},
+			},
+		})
+		out := d.View()
+		line, ok := statusRowOf(out, "rproxy")
+		if !ok {
+			t.Fatalf("view should contain a row for rproxy:\n%s", out)
+		}
+		if !strings.Contains(line, "1080") || !strings.Contains(line, tunnel.SocksLabel) {
+			t.Fatalf("socks-remote row should show remote 1080 and [SOCKS], got %q", line)
+		}
+	})
+
+	t.Run("local forward keeps plain addresses", func(t *testing.T) {
+		d := dashboardWithDescs(singleForward("dev"))
+		out := d.View()
+		if strings.Contains(out, tunnel.SocksLabel) {
+			t.Fatalf("local forward must not render [SOCKS]:\n%s", out)
+		}
+	})
+}
+
 func TestRenderTunnelZeroForwards(t *testing.T) {
 	// A Desc with no forwards is degenerate but must not panic: renderTunnel
 	// falls through to the multi-forward path and emits the header row only.

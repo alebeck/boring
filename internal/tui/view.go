@@ -143,9 +143,9 @@ func inlineCells(t *tunnel.Desc) []string {
 	return []string{
 		statusCell(t.Status),
 		t.Name,
-		f.LocalAddress.String(),
+		f.DisplayLocal(),
 		f.Mode.String(),
-		f.RemoteAddress.String(),
+		f.DisplayRemote(),
 		t.Host,
 	}
 }
@@ -163,9 +163,9 @@ func forwardCells(f tunnel.Forward, last bool) []string {
 	return []string{
 		"",
 		forwardLabel(f, last),
-		f.LocalAddress.String(),
+		f.DisplayLocal(),
 		f.Mode.String(),
-		f.RemoteAddress.String(),
+		f.DisplayRemote(),
 		"",
 	}
 }

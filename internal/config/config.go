@@ -13,12 +13,6 @@ import (
 
 const fileName = ".boring.toml"
 
-// SocksLabel is the display-only placeholder substituted for a socks tunnel's
-// remote address (and a reverse-socks tunnel's local address) when a config is
-// loaded. Those addresses are unused for socks modes; the label keeps the list
-// view readable. It must never be written back to the config file.
-const SocksLabel = "[SOCKS]"
-
 var defaultKeepAliveInterval = 2 * 60 // seconds
 
 var Path string
@@ -89,9 +83,10 @@ func loadFrom(path string) (*Config, error) {
 
 	// Normalize every tunnel so Forwards is always populated (length >= 1).
 	// A tunnel with no [[tunnels.forward]] blocks gets a single implicit
-	// forward built from the legacy local/remote/mode shorthand. This runs
-	// before the socks-label rewrite below so the implicit forward captures
-	// the real addresses rather than the SocksLabel placeholder.
+	// forward built from the legacy local/remote/mode shorthand. The [SOCKS]
+	// display placeholder for socks modes is derived at render time
+	// (tunnel.Forward.DisplayLocal / DisplayRemote), so the forward keeps the
+	// real (possibly empty) addresses here.
 	for i := range cfg.Tunnels {
 		normalizeForwards(&cfg.Tunnels[i])
 	}
@@ -100,17 +95,6 @@ func loadFrom(path string) (*Config, error) {
 	m, err := buildTunnelsMap(cfg.Tunnels)
 	if err != nil {
 		return nil, err
-	}
-
-	// Replace the remote address of Socks tunnels and local address of reverse
-	// socks tunnels by a fixed indicator, it is not used for anything anyway
-	for _, t := range m {
-		switch t.Mode {
-		case tunnel.Socks:
-			t.RemoteAddress = SocksLabel
-		case tunnel.RemoteSocks:
-			t.LocalAddress = SocksLabel
-		}
 	}
 
 	cfg.TunnelsMap = m
