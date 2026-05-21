@@ -4,6 +4,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
+
+	xproxy "golang.org/x/net/proxy"
 )
 
 // TestTunnelMultiForward proves the multi-forward runtime end to end: a single
@@ -145,5 +148,169 @@ func assertGroupedTree(t *testing.T, listing string) {
 	}
 	if !strings.Contains(second, "└") || !strings.Contains(second, "second") {
 		t.Errorf("second forward sub-row not rendered as └ branch: %q", second)
+	}
+}
+
+// multiForwardStatus runs `boring list` and returns the normalized status of
+// the named multi-forward tunnel: "open" for any uptime string, otherwise the
+// literal status word ("closed", "reconn"). It returns "" when the tunnel is
+// not listed. listStatus keys off the "->" arrow, which a multi-forward
+// tunnel's connection-level header row does not carry (the arrow lives on the
+// indented forward sub-rows), so the header row is matched by name directly:
+// the row is `<status...> <name> <via>` with the status being one word.
+func multiForwardStatus(t *testing.T, env []string, name string) string {
+	t.Helper()
+	c, out, err := cliCommand(env, "list")
+	if err != nil {
+		t.Fatalf("failed to run list command: %v", err)
+	}
+	if c != 0 {
+		t.Fatalf("list exit code %d: %s", c, out)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(stripANSI(out)), "\n") {
+		if strings.Contains(line, "->") {
+			continue // a forward sub-row, not the connection header
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[1] != name {
+			continue
+		}
+		if uptimeRe.MatchString(fields[0]) {
+			return "open"
+		}
+		return fields[0]
+	}
+	return ""
+}
+
+// waitForMultiForwardStatus polls `boring list` until the named multi-forward
+// tunnel reports want, or fails the test once the timeout elapses. Reconnect
+// timing is non-deterministic, so reconnect assertions must poll rather than
+// sleep on a fixed duration.
+func waitForMultiForwardStatus(t *testing.T, env []string, name, want string) {
+	t.Helper()
+	deadline := time.After(5 * time.Second)
+	for {
+		if multiForwardStatus(t, env, name) == want {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("multi-forward tunnel %q did not reach status %q in time (last: %q)",
+				name, want, multiForwardStatus(t, env, name))
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+}
+
+// TestMultiForwardReconnect proves that a multi-forward tunnel survives an
+// unexpected SSH-connection drop: after the connection is severed, the tunnel
+// reconnects and re-establishes EVERY forward over the fresh client. Task 2.1's
+// runtime re-runs Open() on reconnect (re-establishing all forwards), and this
+// test verifies that end to end — data must flow through both forwards both
+// before the drop and again after the reconnect.
+//
+// The test name is kept short on purpose: t.TempDir() embeds it in the daemon
+// Unix socket path, which macOS limits to ~104 bytes.
+func TestMultiForwardReconnect(t *testing.T) {
+	env, cancel, err := makeDefaultEnvWithDaemon(t)
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	defer cancel()
+
+	c, out, err := cliCommand(env, "open", "test-multi-reconn")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 0 {
+		t.Fatalf("exit code %d: %s", c, out)
+	}
+
+	// Both forwards carry traffic over the initial connection.
+	testTunnel(t, "localhost:49741", "localhost:49742")
+	testTunnel(t, "localhost:49743", "localhost:49744")
+
+	// Sever the SSH connection the way the single-forward reconnect test does:
+	// pause the server's accept loop and drop every live connection.
+	server.pause()
+	server.closeAll()
+
+	// The tunnel detects the drop and enters the reconnecting state.
+	waitForMultiForwardStatus(t, env, "test-multi-reconn", "reconn")
+
+	// Restore the server and wait for the tunnel to come back to open.
+	server.resume()
+	waitForMultiForwardStatus(t, env, "test-multi-reconn", "open")
+
+	// Both forwards must carry traffic again over the new connection — the
+	// reconnect re-established every forward, not just the first.
+	testTunnel(t, "localhost:49741", "localhost:49742")
+	testTunnel(t, "localhost:49743", "localhost:49744")
+}
+
+// TestMultiForwardMixedModes proves that a single tunnel can carry forwards of
+// DIFFERENT modes — a local, a remote, and a socks forward — over one shared
+// SSH connection. Each forward is exercised according to its own mode; closing
+// the tunnel tears all three down.
+//
+// The test name is kept short on purpose: t.TempDir() embeds it in the daemon
+// Unix socket path, which macOS limits to ~104 bytes.
+func TestMultiForwardMixedModes(t *testing.T) {
+	env, cancel, err := makeDefaultEnvWithDaemon(t)
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	defer cancel()
+
+	c, out, err := cliCommand(env, "open", "test-multi-mixed")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 0 {
+		t.Fatalf("exit code %d: %s", c, out)
+	}
+	// Give the remote forward's server-side listener time to come up.
+	time.Sleep(100 * time.Millisecond)
+
+	// Local forward: connect to the local listener, data exits at the remote.
+	testTunnel(t, "localhost:49761", "localhost:49762")
+
+	// Remote forward: the server listens on the remote address and forwards
+	// back to the local address, so connect to the remote, listen on local.
+	testTunnel(t, "localhost:49764", "localhost:49763")
+
+	// Socks forward: dial an arbitrary target through the SOCKS5 listener.
+	socksDialer, err := xproxy.SOCKS5("tcp", "localhost:49765", nil, xproxy.Direct)
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	l, err := makeListener("localhost:49766")
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	defer l.Close()
+	conn, err := socksDialer.Dial("tcp", "localhost:49766")
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	defer conn.Close()
+	if err := testConnected(l, conn); err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+
+	// Closing the tunnel tears all three forwards down.
+	c, out, err = cliCommand(env, "close", "test-multi-mixed")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 0 {
+		t.Fatalf("exit code %d: %s", c, out)
+	}
+	if _, err := dial("localhost:49761"); err == nil {
+		t.Error("local forward listener still accepting after close")
+	}
+	if _, err := dial("localhost:49765"); err == nil {
+		t.Error("socks forward listener still accepting after close")
 	}
 }

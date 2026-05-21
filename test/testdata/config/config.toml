@@ -76,3 +76,42 @@ host = "127.0.0.1"
   name = "second"
   local = "localhost:49733"
   remote = "localhost:49734"
+
+# A two-forward tunnel used to verify that an unexpected SSH-connection drop
+# reconnects and re-establishes every forward over the new client.
+[[tunnels]]
+name = "test-multi-reconn"
+host = "127.0.0.1"
+
+  [[tunnels.forward]]
+  name = "first"
+  local = "localhost:49741"
+  remote = "localhost:49742"
+
+  [[tunnels.forward]]
+  name = "second"
+  local = "localhost:49743"
+  remote = "localhost:49744"
+
+# A tunnel carrying forwards of different modes over a single SSH connection:
+# a local forward, a remote forward, and a socks (SOCKS5) forward all coexist.
+[[tunnels]]
+name = "test-multi-mixed"
+host = "127.0.0.1"
+
+  [[tunnels.forward]]
+  name = "fwd-local"
+  mode = "local"
+  local = "localhost:49761"
+  remote = "localhost:49762"
+
+  [[tunnels.forward]]
+  name = "fwd-remote"
+  mode = "remote"
+  local = "localhost:49763"
+  remote = "localhost:49764"
+
+  [[tunnels.forward]]
+  name = "fwd-socks"
+  mode = "socks"
+  local = "localhost:49765"
