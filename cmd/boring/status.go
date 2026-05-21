@@ -14,6 +14,8 @@ func status(t *tunnel.Desc) string {
 		return log.Red + "closed" + log.Reset
 	case tunnel.Reconn:
 		return log.Yellow + "reconn" + log.Reset
+	case tunnel.NeedsAuth:
+		return log.Bold + log.Blue + "needs auth" + log.Reset
 	}
 
 	// Tunnel is open, show uptime

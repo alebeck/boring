@@ -7,10 +7,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/alebeck/boring/internal/auth"
 	"github.com/alebeck/boring/internal/config"
 	"github.com/alebeck/boring/internal/daemon"
 	"github.com/alebeck/boring/internal/log"
@@ -127,11 +128,15 @@ func controlTunnels(args []string, kind daemon.CmdKind) {
 	}
 
 	// Issue concurrent commands for all tunnels
+	var prompter auth.Prompter
+	if kind == daemon.Open {
+		prompter = openPrompter()
+	}
 	var g errgroup.Group
 	for n := range keep {
 		g.Go(func() error {
 			if kind == daemon.Open {
-				return openTunnel(ts[n])
+				return openTunnel(ts[n], prompter)
 			} else if kind == daemon.Close {
 				return closeTunnel(ts[n])
 			}
@@ -145,8 +150,57 @@ func controlTunnels(args []string, kind daemon.CmdKind) {
 	}
 }
 
-func openTunnel(t *tunnel.Desc) error {
-	resp, err := sendCmd(daemon.Cmd{Kind: daemon.Open, Tunnel: *t})
+// syncPrompter serializes Prompt calls so the concurrent open goroutines in
+// controlTunnels do not race on the shared terminal — one tunnel's 2FA read
+// stealing another's keystrokes, or interleaved prompt text.
+type syncPrompter struct {
+	inner auth.Prompter
+	mu    sync.Mutex
+}
+
+func (p *syncPrompter) Prompt(name, instruction string,
+	questions []string, echo []bool) ([]string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.inner.Prompt(name, instruction, questions, echo)
+}
+
+// scriptedPrompter answers every challenge question with the given value. It
+// is used only by end-to-end tests, which set BORING_AUTH_ANSWERS so that
+// `boring open` can authenticate without a terminal.
+func scriptedPrompter(answer string) auth.Prompter {
+	return auth.FuncPrompter(func(_, _ string, questions []string, _ []bool) ([]string, error) {
+		answers := make([]string, len(questions))
+		for i := range answers {
+			answers[i] = answer
+		}
+		return answers, nil
+	})
+}
+
+// openPrompter returns the auth prompter for `boring open`: a terminal prompter
+// for interactive sessions, or one that fails fast when there is no terminal to
+// prompt on. The result is wrapped so concurrent open goroutines serialize.
+func openPrompter() auth.Prompter {
+	// BORING_AUTH_ANSWERS is a documented test-only hook: when set, it
+	// supplies a fixed answer to every challenge non-interactively. The env
+	// var is unset in normal use, so production behavior is unchanged.
+	if answer := os.Getenv("BORING_AUTH_ANSWERS"); answer != "" {
+		return scriptedPrompter(answer)
+	}
+	var base auth.Prompter
+	if isTerm {
+		base = auth.NewTerminalPrompter()
+	} else {
+		base = auth.FuncPrompter(func(_, _ string, _ []string, _ []bool) ([]string, error) {
+			return nil, errors.New("interactive authentication required but stdin is not a terminal")
+		})
+	}
+	return &syncPrompter{inner: base}
+}
+
+func openTunnel(t *tunnel.Desc, prompter auth.Prompter) error {
+	resp, err := sendOpen(daemon.Cmd{Kind: daemon.Open, Tunnel: *t}, prompter)
 	if err != nil {
 		log.Errorf("Could not transmit 'open' command: %v", err)
 		return errOpFailed
@@ -161,9 +215,26 @@ func openTunnel(t *tunnel.Desc) error {
 		return errOpFailed
 	}
 
-	log.Infof("Opened tunnel '%s': %s %v %s via %s.", log.Green+log.Bold+t.Name+log.Reset,
-		t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
+	log.Infof("Opened tunnel '%s': %s via %s.", log.Green+log.Bold+t.Name+log.Reset,
+		describeForwards(t), t.Host)
 	return nil
+}
+
+// describeForwards renders a tunnel's forwards for the 'open' confirmation
+// message. It reads Desc.Forwards (the multi-forward model) rather than the
+// legacy singular local/remote/mode fields, which are unset for tunnels
+// configured with [[tunnels.forward]] blocks. config.Load guarantees Forwards
+// has at least one entry; an empty slice falls back to a neutral label.
+func describeForwards(t *tunnel.Desc) string {
+	if len(t.Forwards) == 0 {
+		return "no forwards"
+	}
+	parts := make([]string, 0, len(t.Forwards))
+	for _, f := range t.Forwards {
+		parts = append(parts, fmt.Sprintf("%s %v %s",
+			f.DisplayLocal(), f.Mode, f.DisplayRemote()))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func closeTunnel(t *tunnel.Desc) error {
@@ -223,7 +294,7 @@ func listTunnels(args []string) {
 		return
 	}
 
-	all := orderTunnelsForList(conf.Tunnels, ts)
+	all := tunnel.Order(conf.Tunnels, ts)
 
 	// Filter by group if requested
 	if groupFilter != "" {
@@ -244,33 +315,6 @@ func listTunnels(args []string) {
 	}
 
 	printTunnelList(all)
-}
-
-// orderTunnelsForList combines configured and running tunnels into an ordered slice.
-// Config order is preserved; running-but-not-configured tunnels are appended sorted by name.
-func orderTunnelsForList(conf []tunnel.Desc, ts map[string]*tunnel.Desc) []*tunnel.Desc {
-	var all []*tunnel.Desc
-	visited := make(map[string]bool)
-	for i := range conf {
-		t := &conf[i]
-		if q, ok := ts[t.Name]; ok {
-			all = append(all, q)
-			visited[q.Name] = true
-			continue
-		}
-		all = append(all, t)
-	}
-	var extra []string
-	for name := range ts {
-		if !visited[name] {
-			extra = append(extra, name)
-		}
-	}
-	sort.Strings(extra)
-	for _, name := range extra {
-		all = append(all, ts[name])
-	}
-	return all
 }
 
 func printTunnelList(all []*tunnel.Desc) {
@@ -315,12 +359,38 @@ func printTunnelList(all []*tunnel.Desc) {
 	}
 }
 
-func tunnelTable(tunnels []*tunnel.Desc) *table.Table {
-	tbl := table.New("Status", "Name", "Local", "", "Remote", "Via")
+// tunnelTable builds the grouped-tree listing for `boring list`. A
+// single-forward tunnel renders inline on one line; a multi-forward tunnel
+// renders a connection-level header row plus one indented sub-row per forward.
+// It reads Desc.Forwards (the multi-forward model), not the legacy singular
+// local/remote/mode fields.
+func tunnelTable(tunnels []*tunnel.Desc) *table.TunnelTable {
+	tbl := table.NewTunnelTable()
 	for _, t := range tunnels {
-		tbl.AddRow(status(t), t.Name, t.LocalAddress, t.Mode, t.RemoteAddress, t.Host)
+		tbl.Add(table.TunnelRow{
+			Status:   status(t),
+			Name:     t.Name,
+			Via:      t.Host,
+			Forwards: forwardRows(t),
+		})
 	}
 	return tbl
+}
+
+// forwardRows converts a tunnel's forwards into renderable sub-rows. config.Load
+// guarantees Forwards has at least one entry; an empty slice yields no rows so
+// the tunnel still renders its header line.
+func forwardRows(t *tunnel.Desc) []table.ForwardRow {
+	rows := make([]table.ForwardRow, 0, len(t.Forwards))
+	for _, f := range t.Forwards {
+		rows = append(rows, table.ForwardRow{
+			Label:  f.Label(),
+			Local:  f.DisplayLocal(),
+			Mode:   f.Mode.String(),
+			Remote: f.DisplayRemote(),
+		})
+	}
+	return rows
 }
 
 func filterByPatterns(ts map[string]*tunnel.Desc, pats []string) (map[string]bool, []string) {

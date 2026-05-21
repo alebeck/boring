@@ -1,0 +1,4 @@
+Match final all
+    User test
+    Port 58392
+    UserKnownHostsFile ../testdata/known_hosts/known_hosts_2fa

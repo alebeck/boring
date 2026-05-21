@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/alebeck/boring/internal/auth"
 	"github.com/alebeck/boring/internal/buildinfo"
 	"github.com/alebeck/boring/internal/daemon"
 	"github.com/alebeck/boring/internal/ipc"
@@ -104,6 +105,16 @@ func sendCmd(cmd daemon.Cmd) (*daemon.Resp, error) {
 	}
 
 	return &resp, nil
+}
+
+// sendOpen connects to the daemon and runs the Open exchange.
+func sendOpen(cmd daemon.Cmd, prompter auth.Prompter) (*daemon.Resp, error) {
+	conn, err := connectDaemon()
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	return daemon.RunOpenExchange(conn, cmd, prompter)
 }
 
 // probeDaemon checks whether a daemon on the default socket is responsive,

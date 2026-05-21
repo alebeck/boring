@@ -5,17 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/BurntSushi/toml"
 	"github.com/alebeck/boring/internal/paths"
 	"github.com/alebeck/boring/internal/tunnel"
 )
 
-const (
-	fileName   = ".boring.toml"
-	socksLabel = "[SOCKS]"
-)
+const fileName = ".boring.toml"
 
 var defaultKeepAliveInterval = 2 * 60 // seconds
 
@@ -28,7 +24,7 @@ type Config struct {
 	// KeepAlive allows to specify a global keep alive interval,
 	// (in seconds) overriding the default one. `0` indicates
 	// no keep alive.
-	KeepAlive  *int                    `toml:"keep_alive"`
+	KeepAlive  *int                    `toml:"keep_alive,omitempty"`
 	TunnelsMap map[string]*tunnel.Desc `toml:"-"`
 }
 
@@ -52,11 +48,16 @@ func getConfigHome() string {
 	return "~"
 }
 
-// Load parses the boring configuration file
+// Load parses the boring configuration file at the default path.
 func Load() (*Config, error) {
+	return loadFrom(Path)
+}
+
+// loadFrom parses the boring configuration file at the given path.
+func loadFrom(path string) (*Config, error) {
 	cfg := Config{KeepAlive: &defaultKeepAliveInterval}
 
-	if _, err := toml.DecodeFile(Path, &cfg); err != nil {
+	if _, err := toml.DecodeFile(path, &cfg); err != nil {
 		return nil, fmt.Errorf("could not decode config file: %w", err)
 	}
 
@@ -69,61 +70,83 @@ func Load() (*Config, error) {
 		}
 	}
 
+	// Validate the raw, pre-normalization state of each tunnel: a tunnel must
+	// define at least one forward and must not mix the legacy local/remote
+	// shorthand with [[tunnels.forward]] blocks. This runs before
+	// normalizeForwards folds the shorthand away, since both checks need to
+	// know which form was actually used in the file.
+	for i := range cfg.Tunnels {
+		if err := validateRawForwards(&cfg.Tunnels[i]); err != nil {
+			return nil, err
+		}
+	}
+
+	// Normalize every tunnel so Forwards is always populated (length >= 1).
+	// A tunnel with no [[tunnels.forward]] blocks gets a single implicit
+	// forward built from the legacy local/remote/mode shorthand. The [SOCKS]
+	// display placeholder for socks modes is derived at render time
+	// (tunnel.Forward.DisplayLocal / DisplayRemote), so the forward keeps the
+	// real (possibly empty) addresses here.
+	for i := range cfg.Tunnels {
+		normalizeForwards(&cfg.Tunnels[i])
+	}
+
 	// Create a map of tunnel names to tunnel pointers for easy lookup later
 	m, err := buildTunnelsMap(cfg.Tunnels)
 	if err != nil {
 		return nil, err
 	}
 
-	// Replace the remote address of Socks tunnels and local address of reverse
-	// socks tunnels by a fixed indicator, it is not used for anything anyway
-	for _, t := range m {
-		switch t.Mode {
-		case tunnel.Socks:
-			t.RemoteAddress = socksLabel
-		case tunnel.RemoteSocks:
-			t.LocalAddress = socksLabel
-		}
-	}
-
 	cfg.TunnelsMap = m
 	return &cfg, nil
 }
 
+// validateRawForwards checks a tunnel's forward declaration before the legacy
+// shorthand is folded into Forwards. It enforces two rules that depend on the
+// raw form used in the config file:
+//
+//   - A tunnel must not set both the legacy local/remote shorthand and one or
+//     more [[tunnels.forward]] blocks.
+//   - A tunnel must define at least one forward, via either form.
+//
+// Only the addresses are consulted to decide whether the shorthand was used:
+// mode defaults to its zero value and so cannot reliably signal "set".
+func validateRawForwards(t *tunnel.Desc) error {
+	hasShorthand := t.LocalAddress != "" || t.RemoteAddress != ""
+	hasBlocks := len(t.Forwards) > 0
+	if hasShorthand && hasBlocks {
+		return fmt.Errorf("tunnel %q: set either local/remote or "+
+			"[[tunnels.forward]], not both", t.Name)
+	}
+	if !hasShorthand && !hasBlocks {
+		return fmt.Errorf("tunnel %q: no forward defined", t.Name)
+	}
+	return nil
+}
+
+// normalizeForwards ensures a tunnel's Forwards slice has at least one entry.
+// If no [[tunnels.forward]] blocks were given, it builds a single implicit
+// forward from the legacy local/remote/mode shorthand. A tunnel that already
+// has forwards is left unchanged.
+func normalizeForwards(t *tunnel.Desc) {
+	if len(t.Forwards) > 0 {
+		return
+	}
+	t.Forwards = []tunnel.Forward{{
+		LocalAddress:  t.LocalAddress,
+		RemoteAddress: t.RemoteAddress,
+		Mode:          t.Mode,
+	}}
+}
+
 func buildTunnelsMap(tunnels []tunnel.Desc) (map[string]*tunnel.Desc, error) {
+	if err := Validate(tunnels); err != nil {
+		return nil, err
+	}
 	m := make(map[string]*tunnel.Desc)
 	for i := range tunnels {
 		t := &tunnels[i]
-		if _, exists := m[t.Name]; exists {
-			return nil, fmt.Errorf("found duplicated tunnel name '%v'", t.Name)
-		}
-		if t.Name == "" || strings.Contains(t.Name, " ") ||
-			specialPrefix(t.Name) || containsGlob(t.Name) {
-			return nil, fmt.Errorf("tunnel names cannot be empty, contain spaces,"+
-				" start with special characters, or contain glob characters \"*?[\"."+
-				" Found '%v'", t.Name)
-		}
-		if t.Group != "" && (strings.Contains(t.Group, " ") ||
-			specialPrefix(t.Group) || containsGlob(t.Group)) {
-			return nil, fmt.Errorf("group names cannot contain spaces,"+
-				" start with special characters, or contain glob characters \"*?[\"."+
-				" Found '%v'", t.Group)
-		}
 		m[t.Name] = t
 	}
 	return m, nil
-}
-
-func specialPrefix(s string) bool {
-	if s == "" {
-		return false
-	}
-	firstChar := s[0]
-	return !(firstChar >= 'A' && firstChar <= 'Z' ||
-		firstChar >= 'a' && firstChar <= 'z' ||
-		firstChar >= '0' && firstChar <= '9')
-}
-
-func containsGlob(s string) bool {
-	return strings.ContainsAny(s, "*?[")
 }

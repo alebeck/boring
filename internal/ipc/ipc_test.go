@@ -1,6 +1,8 @@
 package ipc
 
 import (
+	"bufio"
+	"bytes"
 	"io"
 	"net"
 	"os"
@@ -81,5 +83,31 @@ func TestDeserializeError(t *testing.T) {
 	if err := Read(&v, strings.NewReader("test\n")); err == nil ||
 		!strings.Contains(err.Error(), "failed to deserialize") {
 		t.Fatalf("did not get expected error")
+	}
+}
+
+func TestReadMultipleMessagesSharedReader(t *testing.T) {
+	// A bytes.Buffer holds both messages before the first read, so the
+	// first Read buffers message 2's bytes inside the *bufio.Reader.
+	// The second Read finds them only because the same reader is reused;
+	// a fresh bufio.Reader on the raw buffer would have lost them.
+	var transport bytes.Buffer
+	if err := Write(map[string]string{"a": "1"}, &transport); err != nil {
+		t.Fatalf("write 1: %v", err)
+	}
+	if err := Write(map[string]string{"a": "2"}, &transport); err != nil {
+		t.Fatalf("write 2: %v", err)
+	}
+
+	br := bufio.NewReader(&transport)
+	var first, second map[string]string
+	if err := Read(&first, br); err != nil {
+		t.Fatalf("first read: %v", err)
+	}
+	if err := Read(&second, br); err != nil {
+		t.Fatalf("second read: %v", err)
+	}
+	if first["a"] != "1" || second["a"] != "2" {
+		t.Fatalf("got %v, %v", first, second)
 	}
 }

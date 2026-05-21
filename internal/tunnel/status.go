@@ -6,4 +6,5 @@ const (
 	Closed Status = iota
 	Open
 	Reconn
+	NeedsAuth
 )

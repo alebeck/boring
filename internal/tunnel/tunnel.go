@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alebeck/boring/internal/auth"
 	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/proxy"
 	"github.com/alebeck/boring/internal/ssh_config"
@@ -24,33 +25,60 @@ const (
 
 // Desc describes a tunnel for user-facing purposes, e.g., in the config file
 // and in the TUI.
+//
+// Forwards is the single source of truth for the tunnel's port forwards:
+// every loaded tunnel has at least one. The runtime, the daemon, the IPC
+// layer, and every display path read Forwards exclusively.
+//
+// LocalAddress, RemoteAddress, and Mode are the legacy single-forward TOML
+// shorthand. They exist ONLY as the parse landing spot for the tunnel-level
+// local/remote/mode keys: config.Load folds them into a single-element
+// Forwards slice (normalizeForwards) and they are read nowhere else. They keep
+// their toml tags so the shorthand still parses, but carry json:"-" so they
+// never cross the IPC socket — Forwards carries the per-forward data on the
+// wire.
 type Desc struct {
 	Name          string      `toml:"name" json:"name"`
-	LocalAddress  StringOrInt `toml:"local" json:"local"`
-	RemoteAddress StringOrInt `toml:"remote" json:"remote"`
+	LocalAddress  StringOrInt `toml:"local" json:"-"`
+	RemoteAddress StringOrInt `toml:"remote" json:"-"`
 	Host          string      `toml:"host" json:"host"`
-	User          string      `toml:"user" json:"user"`
-	IdentityFile  string      `toml:"identity" json:"identity"`
-	Port          int         `toml:"port" json:"port"`
-	KeepAlive     *int        `toml:"keep_alive" json:"keep_alive"`
-	Group         string      `toml:"group" json:"group"`
-	Mode          Mode        `toml:"mode" json:"mode"`
-	Status        Status      `toml:"-" json:"status"`
-	LastConn      time.Time   `toml:"-" json:"last_conn"`
+	User          string      `toml:"user,omitempty" json:"user"`
+	IdentityFile  string      `toml:"identity,omitempty" json:"identity"`
+	// Port is a pointer so an unset port is omitted from written TOML.
+	// BurntSushi/toml's omitempty does not skip numeric zero values, so a
+	// plain int field of 0 would still be written as "port = 0".
+	Port      *int      `toml:"port,omitempty" json:"port"`
+	KeepAlive *int      `toml:"keep_alive,omitempty" json:"keep_alive"`
+	Group     string    `toml:"group,omitempty" json:"group"`
+	Mode      Mode      `toml:"mode" json:"-"`
+	Status    Status    `toml:"-" json:"status"`
+	LastConn  time.Time `toml:"-" json:"last_conn"`
+	// Forwards is the multi-forward model: every loaded tunnel has at least
+	// one forward. The toml:"forward" tag makes [[tunnels.forward]] blocks
+	// decode into this slice; config.Load also folds the legacy
+	// local/remote/mode shorthand into a single-element Forwards slice.
+	Forwards []Forward `toml:"forward,omitempty" json:"forwards,omitempty"`
 }
 
 // Tunnel is a representation internal to the tunnel and daemon packages,
 // describing a tunnel that is running or about to be run.
 type Tunnel struct {
-	prepared   bool
-	hops       []ssh_config.Hop
-	Closed     chan struct{}
-	stop       chan struct{}
-	listener   net.Listener
-	wg         sync.WaitGroup
-	client     *ssh.Client
-	localAddr  *address
-	remoteAddr *address
+	prepared bool
+	// interactive records that the tunnel authenticated via keyboard-interactive
+	// (2FA), so it must not be silently auto-reconnected: a fresh code is required
+	// and the daemon cannot prompt non-interactively.
+	interactive bool
+	// prompter supplies interactive auth answers (2FA codes, key passphrases).
+	// A nil prompter means non-interactive.
+	prompter auth.Prompter
+	hops     []ssh_config.Hop
+	Closed   chan struct{}
+	stop     chan struct{}
+	wg       sync.WaitGroup
+	client   *ssh.Client
+	// forwards holds one runtime entry per Forward: a tunnel owns a single SSH
+	// connection (client) and one listener per forward. Populated by prepare().
+	forwards []*forwardRuntime
 	*Desc
 }
 
@@ -58,11 +86,41 @@ type address struct {
 	addr, net string
 }
 
-func FromDesc(desc *Desc) *Tunnel {
-	return &Tunnel{Desc: desc}
+// interactivePrompter wraps a Prompter and records on the tunnel when a
+// keyboard-interactive (2FA) challenge is answered, as distinct from a
+// key-passphrase prompt. A tunnel that authenticated with 2FA cannot be
+// silently auto-reconnected, since a fresh code is required each time.
+//
+// The two are told apart by the prompt name: a server-supplied
+// keyboard-interactive challenge that happens to be named exactly
+// auth.PassphrasePromptName would be misclassified as a passphrase prompt.
+// That edge case is a deliberate, benign trade-off — the only consequence is
+// a blind reconnect attempt that fails auth rather than resting at NeedsAuth.
+type interactivePrompter struct {
+	inner  auth.Prompter
+	tunnel *Tunnel
+}
+
+func (p *interactivePrompter) Prompt(name, instruction string,
+	questions []string, echo []bool) ([]string, error) {
+	if name != auth.PassphrasePromptName {
+		p.tunnel.interactive = true
+	}
+	return p.inner.Prompt(name, instruction, questions, echo)
+}
+
+// FromDesc builds a Tunnel from a description. prompter supplies interactive
+// auth answers (2FA codes, key passphrases); pass nil for non-interactive use.
+func FromDesc(desc *Desc, prompter auth.Prompter) *Tunnel {
+	return &Tunnel{Desc: desc, prompter: prompter}
 }
 
 func (t *Tunnel) Open() (err error) {
+	// prepare() resolves SSH config and loads keys, decrypting any
+	// passphrase-protected ones (prompting the user). The prepared guard
+	// makes this run exactly once: reconnect attempts reuse the decrypted
+	// signers cached in t.hops, so the user is never re-prompted for a key
+	// passphrase on reconnect.
 	if !t.prepared {
 		if err = t.prepare(); err != nil {
 			return err
@@ -74,10 +132,10 @@ func (t *Tunnel) Open() (err error) {
 	}
 	log.Debugf("%v: connected to server", t.Name)
 
-	if err = t.makeListener(); err != nil {
+	if err = t.makeListeners(); err != nil {
+		t.client.Close()
 		return fmt.Errorf("cannot listen: %v", err)
 	}
-	log.Debugf("%v: listening on %v", t.Name, t.listener.Addr())
 
 	if t.stop == nil {
 		t.stop = make(chan struct{})
@@ -103,8 +161,8 @@ func (t *Tunnel) prepare() error {
 	if t.User != "" {
 		sc.User = t.User
 	}
-	if t.Port != 0 {
-		sc.Port = t.Port
+	if t.Port != nil {
+		sc.Port = *t.Port
 	}
 	if t.IdentityFile != "" {
 		sc.IdentityFiles = []string{t.IdentityFile}
@@ -117,24 +175,45 @@ func (t *Tunnel) prepare() error {
 
 	sc.EnsureUser()
 
-	// Infer series of hops from ssh config
-	if t.hops, err = sc.ToHops(); err != nil {
+	// Infer series of hops from ssh config. The tunnel's prompter (which may be
+	// nil for non-interactive use) reaches SSH auth through here. It is wrapped
+	// so that answering a keyboard-interactive (2FA) challenge marks the tunnel
+	// interactive, which suppresses blind auto-reconnect.
+	var prompter auth.Prompter
+	if t.prompter != nil {
+		prompter = &interactivePrompter{inner: t.prompter, tunnel: t}
+	}
+	if t.hops, err = sc.ToHops(prompter); err != nil {
 		return err
 	}
 
-	allowShort := t.Mode == Remote || t.Mode == RemoteSocks
-	t.remoteAddr, err = parseAddr(string(t.RemoteAddress), allowShort)
-	if err != nil {
-		return fmt.Errorf("remote address: %v", err)
-	}
-
-	t.localAddr, err = parseAddr(string(t.LocalAddress), !allowShort)
-	if err != nil {
-		return fmt.Errorf("local address: %v", err)
+	// Address parsing is per-forward: each Forward carries its own
+	// local/remote addresses and mode. The connection-level resolution above
+	// runs once for the whole tunnel.
+	if err = t.prepareForwards(); err != nil {
+		return err
 	}
 
 	t.prepared = true
 
+	return nil
+}
+
+// prepareForwards builds the per-forward runtime slice, parsing every Forward's
+// local/remote addresses for its own mode. Every loaded tunnel has at least one
+// forward; an empty Forwards slice is a programming error.
+func (t *Tunnel) prepareForwards() error {
+	if len(t.Forwards) == 0 {
+		return fmt.Errorf("tunnel has no forwards")
+	}
+	t.forwards = make([]*forwardRuntime, 0, len(t.Forwards))
+	for _, f := range t.Forwards {
+		fr, err := parseForward(f)
+		if err != nil {
+			return fmt.Errorf("forward %q: %v", f.Label(), err)
+		}
+		t.forwards = append(t.forwards, fr)
+	}
 	return nil
 }
 
@@ -196,17 +275,45 @@ func wrapClient(old *ssh.Client, addr string, conf *ssh.ClientConfig) (*ssh.Clie
 	return ssh.NewClient(ncc, chans, reqs), nil
 }
 
-func (t *Tunnel) makeListener() (err error) {
-	if t.Mode == Remote || t.Mode == RemoteSocks {
-		t.listener, err = t.client.Listen(t.remoteAddr.net, t.remoteAddr.addr)
+// makeListeners binds one listener per forward. It is atomic: if any forward's
+// listener fails to bind, every listener already created in this call is closed
+// and an error naming the offending forward is returned, so a tunnel never
+// opens partially.
+func (t *Tunnel) makeListeners() error {
+	for _, fr := range t.forwards {
+		if err := t.makeListener(fr); err != nil {
+			t.closeListeners()
+			return fmt.Errorf("forward %q: %v", fr.Label(), err)
+		}
+		log.Debugf("%v: forward %q listening on %v",
+			t.Name, fr.Label(), fr.listener.Addr())
+	}
+	return nil
+}
+
+// makeListener binds a single forward's listener: a remote listener requested
+// from the server for remote/socks-remote modes, a local socket otherwise.
+func (t *Tunnel) makeListener(fr *forwardRuntime) (err error) {
+	if fr.isRemote() {
+		fr.listener, err = t.client.Listen(fr.remoteAddr.net, fr.remoteAddr.addr)
 	} else {
-		t.listener, err = net.Listen(t.localAddr.net, t.localAddr.addr)
+		fr.listener, err = net.Listen(fr.localAddr.net, fr.localAddr.addr)
 	}
 	return
 }
 
-func (t *Tunnel) dial(network, addr string) (net.Conn, error) {
-	if t.Mode == Remote || t.Mode == RemoteSocks {
+// closeListeners closes every forward listener that is currently open.
+func (t *Tunnel) closeListeners() {
+	for _, fr := range t.forwards {
+		if fr.listener != nil {
+			fr.listener.Close()
+			fr.listener = nil
+		}
+	}
+}
+
+func (t *Tunnel) dial(fr *forwardRuntime, network, addr string) (net.Conn, error) {
+	if fr.isRemote() {
 		return net.Dial(network, addr)
 	}
 	return t.client.Dial(network, addr)
@@ -219,8 +326,12 @@ func (t *Tunnel) run() {
 		close(disconn)
 	}()
 
+	// Keep-alive runs once for the single shared client; one connection
+	// handler runs per forward.
 	go t.waitFor(func() { t.keepAlive(disconn) })
-	go t.waitFor(func() { t.handleConns() })
+	for _, fr := range t.forwards {
+		go t.waitFor(func() { t.handleConns(fr) })
+	}
 
 	stopped := false
 	select {
@@ -230,9 +341,9 @@ func (t *Tunnel) run() {
 		t.client.Close()
 	case <-disconn:
 	}
-	t.listener.Close()
+	t.closeListeners()
 	t.wg.Wait()
-	if !stopped {
+	if t.shouldReconnect(stopped) {
 		if err := t.reconnectLoop(); err != nil {
 			log.Errorf("%v: could not re-connect: %v", t.Name, err)
 		} else {
@@ -240,8 +351,25 @@ func (t *Tunnel) run() {
 			return
 		}
 	}
-	t.Status = Closed
+	t.Status = t.finalStatus(stopped)
 	close(t.Closed)
+}
+
+// shouldReconnect reports whether run() should attempt reconnection after an
+// unexpected disconnect. Interactive (2FA) tunnels cannot: a fresh code is
+// required and the daemon cannot prompt non-interactively.
+func (t *Tunnel) shouldReconnect(stopped bool) bool {
+	return !stopped && !t.interactive
+}
+
+// finalStatus is the status a tunnel rests at once run() exits without
+// reconnecting: NeedsAuth for an interactive tunnel that dropped unexpectedly
+// (it needs the user to re-authenticate), Closed otherwise.
+func (t *Tunnel) finalStatus(stopped bool) Status {
+	if !stopped && t.interactive {
+		return NeedsAuth
+	}
+	return Closed
 }
 
 func (t *Tunnel) keepAlive(cancel chan struct{}) {
@@ -270,31 +398,33 @@ func (t *Tunnel) keepAlive(cancel chan struct{}) {
 	}
 }
 
-func (t *Tunnel) handleConns() {
-	defer t.listener.Close()
+func (t *Tunnel) handleConns(fr *forwardRuntime) {
+	defer fr.listener.Close()
 	defer t.client.Close()
-	if t.Mode == Local || t.Mode == Remote {
-		t.handleForward()
+	if fr.isSocks() {
+		t.handleSocks(fr)
 		return
 	}
-	t.handleSocks()
+	t.handleForward(fr)
 }
 
-func (t *Tunnel) handleForward() {
+func (t *Tunnel) handleForward(fr *forwardRuntime) {
 	for {
-		conn1, err := t.listener.Accept()
+		conn1, err := fr.listener.Accept()
 		if err != nil {
-			log.Errorf("%v: could not accept: %v", t.Name, err)
+			log.Errorf("%v: forward %q could not accept: %v",
+				t.Name, fr.Label(), err)
 			return
 		}
 		go t.waitFor(func() {
-			addr := t.remoteAddr
-			if t.Mode == Remote || t.Mode == RemoteSocks {
-				addr = t.localAddr
+			addr := fr.remoteAddr
+			if fr.isRemote() {
+				addr = fr.localAddr
 			}
-			conn2, err := t.dial(addr.net, addr.addr)
+			conn2, err := t.dial(fr, addr.net, addr.addr)
 			if err != nil {
-				log.Errorf("%v: could not dial: %v", t.Name, err)
+				log.Errorf("%v: forward %q could not dial: %v",
+					t.Name, fr.Label(), err)
 				return
 			}
 			tunnel(conn1, conn2)
@@ -320,16 +450,17 @@ func tunnel(c1, c2 net.Conn) {
 	<-done
 }
 
-func (t *Tunnel) handleSocks() {
+func (t *Tunnel) handleSocks(fr *forwardRuntime) {
 	serv := &proxy.Server{
 		Dialer: func(ctx context.Context, netw, addr string) (net.Conn, error) {
-			return t.dial(netw, addr)
+			return t.dial(fr, netw, addr)
 		},
 	}
 	for {
-		conn, err := t.listener.Accept()
+		conn, err := fr.listener.Accept()
 		if err != nil {
-			log.Errorf("%v: could not accept: %v", t.Name, err)
+			log.Errorf("%v: forward %q could not accept: %v",
+				t.Name, fr.Label(), err)
 			return
 		}
 		go t.waitFor(func() { serv.ServeConn(conn) })

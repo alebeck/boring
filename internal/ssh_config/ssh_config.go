@@ -1,6 +1,7 @@
 package ssh_config
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/alebeck/boring/internal/agent"
+	"github.com/alebeck/boring/internal/auth"
 	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/paths"
 	ossh_config "github.com/alebeck/ssh_config"
@@ -52,6 +54,7 @@ type SSHConfig struct {
 	KeyCheck         keyCheck
 	IdentitiesOnly   bool
 	IdentityFiles    []string
+	AgentSock        string // SSH agent socket (from IdentityAgent or $SSH_AUTH_SOCK)
 	CertificateFiles []string
 	KnownHostsFiles  []string
 	Ciphers          []string
@@ -59,6 +62,11 @@ type SSHConfig struct {
 	HostKeyAlgos     []string
 	KexAlgos         []string
 	Jumps            []*jumpSpec
+
+	// prompter handles interactive authentication. A nil prompter means
+	// non-interactive operation. It is carried through hop construction so
+	// that interactive auth methods and passphrase prompting can reach it.
+	prompter auth.Prompter
 }
 
 var (
@@ -130,6 +138,7 @@ func ParseSSHConfig(alias, user string) (*SSHConfig, error) {
 
 	c.IdentitiesOnly = get("IdentitiesOnly") == "yes"
 	c.IdentityFiles = sub.applyAll(getAll("IdentityFile"), identFileTokens)
+	c.AgentSock = resolveAgentSock(get("IdentityAgent"))
 	c.CertificateFiles = getAll("CertificateFile")
 
 	// Known hosts
@@ -142,8 +151,30 @@ func ParseSSHConfig(alias, user string) (*SSHConfig, error) {
 	return c, nil
 }
 
-// ToHops creates an ordered series of Hops from an SSHConfig
-func (sc *SSHConfig) ToHops() ([]Hop, error) {
+// resolveAgentSock resolves the SSH agent socket from an IdentityAgent
+// directive value. An absent directive (empty value) or the literal
+// "SSH_AUTH_SOCK" falls back to $SSH_AUTH_SOCK; "none" disables the agent; a
+// "$VAR" value is read from the environment; anything else is treated as a
+// path, with surrounding quotes stripped and a leading "~" expanded.
+func resolveAgentSock(raw string) string {
+	v := strings.Trim(strings.TrimSpace(raw), `"`)
+	switch {
+	case v == "" || v == "SSH_AUTH_SOCK":
+		return os.Getenv("SSH_AUTH_SOCK")
+	case v == "none":
+		return ""
+	case strings.HasPrefix(v, "$"):
+		return os.Getenv(v[1:])
+	default:
+		return paths.ReplaceTilde(v)
+	}
+}
+
+// ToHops creates an ordered series of Hops from an SSHConfig. The given
+// prompter is used for interactive authentication; pass nil for
+// non-interactive operation.
+func (sc *SSHConfig) ToHops(prompter auth.Prompter) ([]Hop, error) {
+	sc.prompter = prompter
 	return sc.toHopsImpl(false, 0)
 }
 
@@ -182,6 +213,9 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 
 		jc.EnsureUser()
 
+		// Propagate the prompter so interactive auth reaches every hop
+		jc.prompter = sc.prompter
+
 		// Recursively connect to first jump host, ignore jumps for subsequent connections;
 		// this corresponds to ssh(1) behavior
 		hs, err := jc.toHopsImpl(i != 0, depth+1)
@@ -196,7 +230,7 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 		return nil, err
 	}
 	log.Debugf("Trying %d key file(s)", len(sigs))
-	auth := []ssh.AuthMethod{ssh.PublicKeys(sigs...)}
+	authMethods := buildAuthMethods(sigs, sc.prompter)
 
 	keyCallback, keyAlgos, err := sc.makeCallbackAndAlgos()
 	if err != nil {
@@ -210,7 +244,7 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 			MACs:         sc.Macs,
 		},
 		User:              sc.User,
-		Auth:              auth,
+		Auth:              authMethods,
 		HostKeyAlgorithms: keyAlgos,
 		HostKeyCallback:   keyCallback,
 		Timeout:           sshConnTimeout,
@@ -220,6 +254,28 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 	hops = append(hops, hop)
 
 	return hops, nil
+}
+
+// buildAuthMethods returns the SSH auth methods: public keys always, plus
+// keyboard-interactive (2FA) when an interactive prompter is available.
+func buildAuthMethods(signers []ssh.Signer, prompter auth.Prompter) []ssh.AuthMethod {
+	methods := []ssh.AuthMethod{ssh.PublicKeys(signers...)}
+	if prompter != nil {
+		methods = append(methods, ssh.KeyboardInteractive(keyboardInteractiveChallenge(prompter)))
+	}
+	return methods
+}
+
+// keyboardInteractiveChallenge delegates an SSH keyboard-interactive challenge
+// to prompter, short-circuiting informational (zero-question) challenges that
+// need no user input.
+func keyboardInteractiveChallenge(prompter auth.Prompter) ssh.KeyboardInteractiveChallenge {
+	return func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+		if len(questions) == 0 {
+			return nil, nil // informational challenge, no input
+		}
+		return prompter.Prompt(name, instruction, questions, echos)
+	}
 }
 
 func (sc *SSHConfig) loadCerts() (certs []*ssh.Certificate) {
@@ -244,7 +300,7 @@ func (sc *SSHConfig) loadIDs() (fileIDs, agentCertIDs, agentCfgIDs, agentOtherID
 	cfgFP := make(map[string]struct{}, len(sc.IdentityFiles))
 
 	for _, f := range sc.IdentityFiles {
-		s, err := loadPrivateKey(f)
+		s, err := loadPrivateKeyInteractive(f, sc.prompter)
 		if err != nil {
 			log.Warningf("key file %q could not be added: %v", f, err)
 			// Here we still try to load the corresponding public key to mark it configured
@@ -262,7 +318,7 @@ func (sc *SSHConfig) loadIDs() (fileIDs, agentCertIDs, agentCfgIDs, agentOtherID
 		cfgFP[keyFP(s.PublicKey())] = struct{}{}
 	}
 
-	if agSigs, err := agent.GetSigners(); err != nil {
+	if agSigs, err := agent.GetSigners(sc.AgentSock); err != nil {
 		log.Warningf("Unable to get keys from ssh-agent: %v", err)
 	} else {
 		for _, s := range agSigs {
@@ -298,9 +354,9 @@ func (sc *SSHConfig) makeSigners() ([]ssh.Signer, error) {
 	// https://github.com/openssh/openssh-portable/blob/832a77000abe61f61bddb9e595f45c7131c0269d/sshconnect2.c#L1669
 	// Order (OpenSSH-like):
 	// 1. CertificateFile certs (bound to first matching private key)
-	// 2. Agent keys that match IdentityFiles
-	// 3. Other agent keys (unless IdentitiesOnly)
-	// 4. IdentityFile keys
+	// 2. Agent keys that match a configured IdentityFile
+	// 3. Configured IdentityFile keys loaded from a file
+	// 4. Other agent keys (unless IdentitiesOnly)
 	// + agent certificate identities (already certified signers)
 
 	// Load ID groups
@@ -341,14 +397,17 @@ func (sc *SSHConfig) makeSigners() ([]ssh.Signer, error) {
 		sigs = append(sigs, id.signer)
 	}
 
-	// Plain keys as fallback (bucket order)
+	// Plain keys, in bucket order. Configured keys (agent-backed, then
+	// file-backed) come before unconfigured agent keys, so an explicit
+	// `identity` is offered ahead of an agent that may hold many keys —
+	// servers cap authentication attempts (MaxAuthTries, typically 6).
 	for _, id := range agentCfgIDs {
 		sigs = append(sigs, id.signer)
 	}
-	for _, id := range agentOtherIDs {
+	for _, id := range fileIDs {
 		sigs = append(sigs, id.signer)
 	}
-	for _, id := range fileIDs {
+	for _, id := range agentOtherIDs {
 		sigs = append(sigs, id.signer)
 	}
 
@@ -417,17 +476,36 @@ func (sc *SSHConfig) EnsureUser() {
 	}
 }
 
-func loadPrivateKey(path string) (ssh.Signer, error) {
+// loadPrivateKeyInteractive parses a private key file, prompting for a
+// passphrase when the key is encrypted and a prompter is available. A nil
+// prompter means non-interactive operation: encrypted keys then fail instead
+// of blocking on input.
+func loadPrivateKeyInteractive(path string, prompter auth.Prompter) (ssh.Signer, error) {
 	if path == "" {
 		return nil, fmt.Errorf("no key specified")
 	}
 	key, err := os.ReadFile(paths.ReplaceTilde(path))
 	if err != nil {
-		return nil, fmt.Errorf("could not read key: %v", err)
+		return nil, fmt.Errorf("could not read key %q: %w", path, err)
 	}
 	signer, err := ssh.ParsePrivateKey(key)
+	if err == nil {
+		return signer, nil
+	}
+	var missing *ssh.PassphraseMissingError
+	if !errors.As(err, &missing) {
+		return nil, fmt.Errorf("could not parse key %q: %w", path, err)
+	}
+	if prompter == nil {
+		return nil, fmt.Errorf("key %q is encrypted and no prompter is set", path)
+	}
+	pass, err := auth.Passphrase(prompter, path)
 	if err != nil {
-		return nil, fmt.Errorf("could not parse key: %v", err)
+		return nil, err
+	}
+	signer, err = ssh.ParsePrivateKeyWithPassphrase(key, []byte(pass))
+	if err != nil {
+		return nil, fmt.Errorf("could not decrypt key %q: %w", path, err)
 	}
 	return signer, nil
 }

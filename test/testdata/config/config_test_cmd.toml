@@ -1,0 +1,40 @@
+keep_alive = 0
+
+# A reachable tunnel: targets the in-process public-key SSH test server
+# (same fixture used by the tunnel e2e tests). `boring test` should report it
+# as a successful connection.
+[[tunnels]]
+name = "test"
+host = "127.0.0.1"
+local = 49711
+remote = "localhost:49712"
+
+# An unreachable tunnel: nothing listens on this port, so the SSH handshake
+# cannot complete. `boring test` should report it as a failed connection.
+[[tunnels]]
+name = "test-unreachable"
+mode = "local"
+host = "127.0.0.1"
+port = 59999
+local = "localhost:49711"
+remote = "localhost:49712"
+user = "test"
+identity = "../testdata/keys/client"
+
+# A reachable multi-forward tunnel: one SSH connection, two [[tunnels.forward]]
+# blocks. `boring test` verifies only the handshake + auth and opens no
+# listeners, so it must report this tunnel as a successful connection
+# regardless of how many forwards it carries.
+[[tunnels]]
+name = "test-multi"
+host = "127.0.0.1"
+
+  [[tunnels.forward]]
+  name = "first"
+  local = "localhost:49751"
+  remote = "localhost:49752"
+
+  [[tunnels.forward]]
+  name = "second"
+  local = "localhost:49753"
+  remote = "localhost:49754"

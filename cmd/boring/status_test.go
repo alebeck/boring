@@ -23,6 +23,13 @@ func TestStatusReconn(t *testing.T) {
 	}
 }
 
+func TestStatusNeedsAuth(t *testing.T) {
+	d := &tunnel.Desc{Status: tunnel.NeedsAuth}
+	if s := status(d); s != "needs auth" {
+		t.Fatalf("incorrect status: %s", s)
+	}
+}
+
 func TestStatusUptimeMins(t *testing.T) {
 	log.Init(io.Discard, true, false)
 	l := 7*time.Minute + 21*time.Second

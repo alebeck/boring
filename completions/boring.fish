@@ -6,6 +6,8 @@ function __boring_get_names
     # retrieve names based on status
     if test "$stat" = "closed"
         set names (boring list 2>/dev/null | awk '$1 == "closed" { print $2 }')
+    else if test "$stat" = "all"
+        set names (boring list 2>/dev/null | awk '$1 != "Status" && NF >= 2 { print $2 }')
     else
         set names (boring list 2>/dev/null | awk '$1 != "closed" && $1 != "Status" && NF >= 2 { print $2 }')
     end
@@ -34,7 +36,7 @@ function __boring_complete
     set arguments (commandline -opc)[3..-1]
 
     if test (count $command) -eq 0
-        printf "%s\n" open close list edit version help
+        printf "%s\n" open close list test tui edit version help
         return
     end
 
@@ -53,6 +55,8 @@ function __boring_complete
             __boring_get_names closed $arguments
         case close c
             __boring_get_names open $arguments
+        case test t
+            __boring_get_names all $arguments
     end
 end
 
