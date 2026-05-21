@@ -47,6 +47,38 @@ Usage:
   boring help, h                 Show this help message
 ```
 
+## Terminal UI
+
+`boring tui` opens an interactive dashboard for managing tunnels and editing
+your configuration — no need to hand-edit `.boring.toml`.
+
+<!-- TUI usage GIF goes here, e.g. ![TUI](./assets/tui.gif) -->
+
+From the dashboard you can:
+
+* See every tunnel with a live, colour-coded status (open / reconnecting /
+  needs auth / closed). A multi-forward tunnel shows as a grouped tree, one
+  row per forward.
+* Open, close, and test connections.
+* Add, edit, and delete tunnels through a form — changes are written back to
+  `.boring.toml`, and your original file is backed up once as `.boring.toml.bak`.
+* Answer 2FA codes and key passphrases in a modal when a tunnel needs them.
+
+| Key | Action |
+|-----|--------|
+| `j` / `k`, `↑` / `↓` | Move between tunnels |
+| `enter` / `space`    | Open / close the selected tunnel |
+| `t`                  | Test the selected tunnel's connection |
+| `a`                  | Add a new tunnel |
+| `e`                  | Edit the selected tunnel |
+| `d`                  | Delete the selected tunnel |
+| `?`                  | Toggle the help screen |
+| `q` / `ctrl+c`       | Quit |
+
+In the add/edit form: `tab` / `shift+tab` move between fields, `←` / `→` cycle
+a forward's mode, `ctrl+f` adds a forward and `ctrl+x` removes one, `enter`
+saves and `esc` cancels.
+
 ## Interactive authentication
 
 `boring` supports SSH keyboard-interactive authentication (2FA) and
