@@ -62,8 +62,8 @@ func (m Mode) ConfigValue() string {
 
 // MarshalTOML implements the github.com/BurntSushi/toml Marshaler interface so
 // the TOML encoder writes the mode as its canonical quoted string. It is
-// deliberately NOT encoding.TextMarshaler: Desc.Mode is also JSON-encoded over
-// the IPC socket, and a TextMarshaler would change that wire format too.
+// deliberately NOT encoding.TextMarshaler: Forward.Mode is also JSON-encoded
+// over the IPC socket, and a TextMarshaler would change that wire format too.
 func (m Mode) MarshalTOML() ([]byte, error) {
 	return []byte(strconv.Quote(m.ConfigValue())), nil
 }
