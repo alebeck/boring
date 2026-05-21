@@ -25,10 +25,22 @@ const (
 
 // Desc describes a tunnel for user-facing purposes, e.g., in the config file
 // and in the TUI.
+//
+// Forwards is the single source of truth for the tunnel's port forwards:
+// every loaded tunnel has at least one. The runtime, the daemon, the IPC
+// layer, and every display path read Forwards exclusively.
+//
+// LocalAddress, RemoteAddress, and Mode are the legacy single-forward TOML
+// shorthand. They exist ONLY as the parse landing spot for the tunnel-level
+// local/remote/mode keys: config.Load folds them into a single-element
+// Forwards slice (normalizeForwards) and they are read nowhere else. They keep
+// their toml tags so the shorthand still parses, but carry json:"-" so they
+// never cross the IPC socket — Forwards carries the per-forward data on the
+// wire.
 type Desc struct {
 	Name          string      `toml:"name" json:"name"`
-	LocalAddress  StringOrInt `toml:"local" json:"local"`
-	RemoteAddress StringOrInt `toml:"remote" json:"remote"`
+	LocalAddress  StringOrInt `toml:"local" json:"-"`
+	RemoteAddress StringOrInt `toml:"remote" json:"-"`
 	Host          string      `toml:"host" json:"host"`
 	User          string      `toml:"user,omitempty" json:"user"`
 	IdentityFile  string      `toml:"identity,omitempty" json:"identity"`
@@ -38,7 +50,7 @@ type Desc struct {
 	Port      *int      `toml:"port,omitempty" json:"port"`
 	KeepAlive *int      `toml:"keep_alive,omitempty" json:"keep_alive"`
 	Group     string    `toml:"group,omitempty" json:"group"`
-	Mode      Mode      `toml:"mode" json:"mode"`
+	Mode      Mode      `toml:"mode" json:"-"`
 	Status    Status    `toml:"-" json:"status"`
 	LastConn  time.Time `toml:"-" json:"last_conn"`
 	// Forwards is the multi-forward model: every loaded tunnel has at least
