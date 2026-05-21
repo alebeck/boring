@@ -89,15 +89,50 @@ TUI saves a change it rewrites `.boring.toml`, and on its first save it
 preserves your original hand-written file (including any comments) as
 `.boring.toml.bak`.
 
+### Multiple forwards over one connection
+
+A single `[[tunnels]]` entry can carry multiple `[[tunnels.forward]]` blocks.
+Each forward is one port forwarding, but they all share **one SSH
+connection** — so connecting to several services behind the same host costs
+just **one handshake, one authentication, and one 2FA prompt** instead of one
+per forward. This is especially handy for 2FA-protected bastions.
+
+```toml
+[[tunnels]]
+name = "prod"
+host = "bastion"
+user = "deploy"
+
+  [[tunnels.forward]]
+  name   = "db"            # optional label
+  local  = "5432"
+  remote = "db.internal:5432"
+
+  [[tunnels.forward]]
+  local  = "6379"
+  remote = "redis.internal:6379"
+  mode   = "local"         # optional, default "local"
+```
+
+The legacy single-`local`/`remote` form keeps working unchanged — it is simply
+a tunnel with exactly one forward, so existing configs need no edits.
+
+Rules: a tunnel must define at least one forward, either via the tunnel-level
+`local`/`remote`(/`mode`) shorthand **or** one or more `[[tunnels.forward]]`
+blocks — setting both on the same tunnel is an error. A forward's `name`, if
+set, must be unique within its tunnel. `boring list` and the `tui` render a
+multi-forward tunnel as a grouped tree, one row per forward.
+
 Currently, supported options at tunnel level are:
 
 | **Option**    | **Description**                                                                                                                                                                    |
 |---------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `name`        | Alias for the tunnel. **Required.**                                                                                                                                                |
-| `local`       | Local address. Can be a `"$host:$port"` network address or a Unix socket. Can be abbreviated as `"$port"` in local and socks modes. **Required** in local, remote and socks modes. |
-| `remote`      | Remote address. As above, but can be abbreviated in remote and socks-remote modes. **Required** in local, remote and socks-remote modes.                                           |
+| `local`       | Local address. Can be a `"$host:$port"` network address or a Unix socket. Can be abbreviated as `"$port"` in local and socks modes. **Required** in local, remote and socks modes. A **per-forward** field: set it at the tunnel level (shorthand for a single-forward tunnel) or inside each `[[tunnels.forward]]`. |
+| `remote`      | Remote address. As above, but can be abbreviated in remote and socks-remote modes. **Required** in local, remote and socks-remote modes. Also a **per-forward** field.             |
 | `host`        | Either a host alias that matches SSH configs or the actual hostname. **Required.**                                                                                                 |
-| `mode`        | Mode of the tunnel. Can be either `"local"`, `"remote"`, `"socks"` or `"socks-remote"`. Default is `"local"`.                                                                      |
+| `mode`        | Mode of the forward. Can be either `"local"`, `"remote"`, `"socks"` or `"socks-remote"`. Default is `"local"`. Also a **per-forward** field.                                        |
+| `forward`     | Optional `[[tunnels.forward]]` array — one block per port forward, each with its own `local`/`remote`/`mode` (and optional `name`). Use it instead of the tunnel-level `local`/`remote`/`mode` shorthand to carry multiple forwards over one connection. The optional per-forward `name`, if set, must be unique within the tunnel. |
 | `user`        | SSH user. If not set, tries to read it from SSH config, defaulting to `$USER`.                                                                                                     |
 | `identity`    | SSH identity file. If not set, tries to read it from SSH config and `ssh-agent`, defaulting to standard identity files.                                                            |
 | `port`        | SSH port. If not set, tries to read it from SSH config, defaulting to `22`.                                                                                                        |
