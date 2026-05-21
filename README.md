@@ -23,10 +23,14 @@ Get it: `brew install boring`
 
 * Ultra lightweight and fast
 * Local, remote and dynamic (SOCKS5) port forwarding
+* Multiple port forwards over a single SSH connection
 * Works with SSH config and `ssh-agent`
+* SSH 2FA (keyboard-interactive) and encrypted-key passphrases
 * Supports Unix sockets
 * Automatic re-connection and keep-alives
 * Human-friendly TOML configuration
+* Interactive terminal UI (`boring tui`)
+* Connection testing (`boring test`)
 * Cross platform support
 * Smart shell completions
 
