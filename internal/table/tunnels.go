@@ -20,11 +20,13 @@ func visibleWidth(s string) int {
 	return utf8.RuneCountInString(ansi.ReplaceAllString(s, ""))
 }
 
-// Tree-branch glyphs for forward sub-rows.
+// Tree-branch glyphs for forward sub-rows. These are the shared grouped-tree
+// vocabulary: the TUI renderer (internal/tui) imports them so the CLI list and
+// the dashboard draw identical trees.
 const (
-	branchMid  = "├"  // ├ — a forward that is not the last
-	branchLast = "└"  // └ — the last forward of a tunnel
-	subIndent  = "  " // indent before a forward sub-row's branch glyph
+	BranchMid  = "├"  // ├ — a forward that is not the last
+	BranchLast = "└"  // └ — the last forward of a tunnel
+	SubIndent  = "  " // indent before a forward sub-row's branch glyph
 )
 
 // TunnelRow is one tunnel in a grouped listing: a status, a name, a "via"
@@ -64,9 +66,11 @@ func (t *TunnelTable) Add(row TunnelRow) {
 	t.rows = append(t.rows, row)
 }
 
-// header labels, in display order. The mode column is unlabeled, matching the
-// flat list table.
-var tunnelHeader = []string{"Status", "Name", "Local", "", "Remote", "Via"}
+// TunnelColumns lists the grouped-tree column headers in display order. The
+// mode column is unlabeled, matching the flat list table. It is the shared
+// header vocabulary: the TUI renderer (internal/tui) imports it so both
+// renderers stay column-for-column identical. Read-only — do not mutate.
+var TunnelColumns = []string{"Status", "Name", "Local", "", "Remote", "Via"}
 
 // widths holds the rendered width of every column of the grouped table.
 type widths struct {
@@ -90,17 +94,17 @@ func (t *TunnelTable) String() string {
 // tunnel name and the widest indented forward label.
 func (t *TunnelTable) columnWidths() widths {
 	w := widths{
-		status: visibleWidth(tunnelHeader[0]),
-		name:   visibleWidth(tunnelHeader[1]),
-		local:  visibleWidth(tunnelHeader[2]),
-		mode:   visibleWidth(tunnelHeader[3]),
-		remote: visibleWidth(tunnelHeader[4]),
+		status: visibleWidth(TunnelColumns[0]),
+		name:   visibleWidth(TunnelColumns[1]),
+		local:  visibleWidth(TunnelColumns[2]),
+		mode:   visibleWidth(TunnelColumns[3]),
+		remote: visibleWidth(TunnelColumns[4]),
 	}
 	for _, row := range t.rows {
 		w.status = max(w.status, visibleWidth(row.Status))
 		w.name = max(w.name, visibleWidth(row.Name))
 		for _, f := range row.Forwards {
-			w.name = max(w.name, visibleWidth(subIndent)+visibleWidth(branchMid)+1+visibleWidth(f.Label))
+			w.name = max(w.name, visibleWidth(SubIndent)+visibleWidth(BranchMid)+1+visibleWidth(f.Label))
 			w.local = max(w.local, visibleWidth(f.Local))
 			w.mode = max(w.mode, visibleWidth(f.Mode))
 			w.remote = max(w.remote, visibleWidth(f.Remote))
@@ -112,11 +116,11 @@ func (t *TunnelTable) columnWidths() widths {
 // writeHeader writes the bold column header row. The trailing Via column is
 // not padded — it is the last column.
 func writeHeader(b *strings.Builder, w widths) {
-	for i := 0; i < len(tunnelHeader)-1; i++ {
-		c := tunnelHeader[i]
+	for i := 0; i < len(TunnelColumns)-1; i++ {
+		c := TunnelColumns[i]
 		writeCell(b, log.Bold+c+log.Reset, columnWidth(w, i), visibleWidth(c))
 	}
-	via := tunnelHeader[len(tunnelHeader)-1]
+	via := TunnelColumns[len(TunnelColumns)-1]
 	b.WriteString(log.Bold + via + log.Reset)
 }
 
@@ -163,12 +167,12 @@ func writeHeaderRow(b *strings.Builder, row TunnelRow, w widths) {
 // label occupy the Name column; the local/mode/remote columns align with the
 // inline-row columns. The Status column is left blank.
 func writeForwardRow(b *strings.Builder, f ForwardRow, w widths, last bool) {
-	branch := branchMid
+	branch := BranchMid
 	if last {
-		branch = branchLast
+		branch = BranchLast
 	}
 	writeCell(b, "", w.status, 0)
-	label := subIndent + branch + " " + f.Label
+	label := SubIndent + branch + " " + f.Label
 	writeCell(b, label, w.name, visibleWidth(label))
 	writeCell(b, f.Local, w.local, visibleWidth(f.Local))
 	writeCell(b, f.Mode, w.mode, visibleWidth(f.Mode))

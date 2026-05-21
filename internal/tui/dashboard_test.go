@@ -25,18 +25,27 @@ func keyMsg(r rune) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
 }
 
+// singleForward builds a one-forward Desc, mirroring what config.Load produces
+// for the legacy local/remote shorthand (it normalizes Forwards to length 1).
+func singleForward(name string) tunnel.Desc {
+	fwd := tunnel.Forward{LocalAddress: "9000", RemoteAddress: "localhost:9000"}
+	return tunnel.Desc{
+		Name: name,
+		Host: "example.com",
+		// Legacy shorthand fields kept so config.Load accepts the tunnel on
+		// the reload that follows a save (e.g. after a delete). Derived from
+		// fwd so the shorthand and Forwards[0] cannot drift apart.
+		LocalAddress:  fwd.LocalAddress,
+		RemoteAddress: fwd.RemoteAddress,
+		Forwards:      []tunnel.Forward{fwd},
+	}
+}
+
 // dashboardWithRows builds a dashboard whose rows are the given descriptions.
 func dashboardWithRows(names ...string) dashboard {
 	descs := make([]tunnel.Desc, len(names))
 	for i, n := range names {
-		// Each tunnel needs a forward, otherwise config.Load rejects it on
-		// the reload that follows a save (e.g. after a delete).
-		descs[i] = tunnel.Desc{
-			Name:          n,
-			Host:          "example.com",
-			LocalAddress:  "9000",
-			RemoteAddress: "localhost:9000",
-		}
+		descs[i] = singleForward(n)
 	}
 	return newDashboard(&config.Config{Tunnels: descs}, &tuiPrompter{})
 }
@@ -114,9 +123,9 @@ func TestDashboardIgnoresUnrelatedKey(t *testing.T) {
 
 func TestDashboardHandleTunnelsMergesRunning(t *testing.T) {
 	d := dashboardWithRows("configured")
-	running := map[string]*tunnel.Desc{
-		"adhoc": {Name: "adhoc", Status: tunnel.Open},
-	}
+	adhoc := singleForward("adhoc")
+	adhoc.Status = tunnel.Open
+	running := map[string]*tunnel.Desc{"adhoc": &adhoc}
 	m, cmd := d.Update(tunnelsMsg{running: running})
 	if cmd == nil {
 		t.Fatal("handleTunnels should schedule the next poll")

@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/alebeck/boring/internal/table"
 	"github.com/alebeck/boring/internal/tunnel"
 	"github.com/charmbracelet/lipgloss"
 )
 
-// columns lists the table headers in display order.
-var columns = []string{"Status", "Name", "Local", "Mode", "Remote", "Via"}
+// The grouped-tree vocabulary — the column headers and the branch glyphs — is
+// owned by internal/table (the CLI `boring list` renderer) and shared here so
+// the dashboard and the CLI draw identical trees: table.TunnelColumns,
+// table.BranchMid, table.BranchLast, table.SubIndent.
 
 // statusText returns the human-readable label for a tunnel status.
 func statusText(s tunnel.Status) string {
@@ -99,36 +102,86 @@ func (d dashboard) testResultModalView() string {
 	return box
 }
 
-// cells returns the raw (unstyled) cell text for one tunnel row.
-func cells(t *tunnel.Desc) []string {
+// forwardLabel returns the indented Name-column text of a forward sub-row: the
+// indent, the branch glyph, and the forward's label.
+func forwardLabel(f tunnel.Forward, last bool) string {
+	branch := table.BranchMid
+	if last {
+		branch = table.BranchLast
+	}
+	return table.SubIndent + branch + " " + f.Label()
+}
+
+// inlineCells returns the raw cell text for a single-forward tunnel rendered on
+// one line: status, name, the forward's local/mode/remote, and the via host.
+func inlineCells(t *tunnel.Desc) []string {
+	f := t.Forwards[0]
 	return []string{
 		statusText(t.Status),
 		t.Name,
-		t.LocalAddress.String(),
-		t.Mode.String(),
-		t.RemoteAddress.String(),
+		f.LocalAddress.String(),
+		f.Mode.String(),
+		f.RemoteAddress.String(),
 		t.Host,
 	}
 }
 
-// columnWidths computes each column's width as the max of the header and all
-// cell widths for that column.
+// headerCells returns the raw cell text for a multi-forward tunnel's
+// connection-level row: status, name, and via host. The forward columns are
+// blank — the forwards follow as indented sub-rows.
+func headerCells(t *tunnel.Desc) []string {
+	return []string{statusText(t.Status), t.Name, "", "", "", t.Host}
+}
+
+// forwardCells returns the raw cell text for one indented forward sub-row. The
+// Status column is blank; the branch glyph and label occupy the Name column.
+func forwardCells(f tunnel.Forward, last bool) []string {
+	return []string{
+		"",
+		forwardLabel(f, last),
+		f.LocalAddress.String(),
+		f.Mode.String(),
+		f.RemoteAddress.String(),
+		"",
+	}
+}
+
+// observeWidths widens each column to fit the given raw cell row.
+func observeWidths(widths []int, cells []string) {
+	for i, c := range cells {
+		if w := lipgloss.Width(c); w > widths[i] {
+			widths[i] = w
+		}
+	}
+}
+
+// columnWidths computes each column's width as the max of the header and every
+// rendered cell — inline rows, multi-forward header rows, and forward sub-rows
+// — so the columns line up across the whole grouped tree.
 func columnWidths(rows []*tunnel.Desc) []int {
-	widths := make([]int, len(columns))
-	for i, h := range columns {
+	widths := make([]int, len(table.TunnelColumns))
+	for i, h := range table.TunnelColumns {
 		widths[i] = lipgloss.Width(h)
 	}
 	for _, t := range rows {
-		for i, c := range cells(t) {
-			if w := lipgloss.Width(c); w > widths[i] {
-				widths[i] = w
-			}
+		if len(t.Forwards) == 1 {
+			observeWidths(widths, inlineCells(t))
+			continue
+		}
+		// A tunnel with zero or many forwards renders a connection-level
+		// header row; many forwards add indented sub-rows.
+		observeWidths(widths, headerCells(t))
+		for i, f := range t.Forwards {
+			observeWidths(widths, forwardCells(f, i == len(t.Forwards)-1))
 		}
 	}
 	return widths
 }
 
-// tableView renders the tunnel table, or a placeholder if empty.
+// tableView renders the tunnel table, or a placeholder if empty. Each tunnel
+// expands into one inline line (single forward) or a header line plus one
+// indented sub-row per forward (multi-forward). The cursor selects tunnels:
+// the whole block of the selected tunnel is highlighted.
 func (d dashboard) tableView() string {
 	if len(d.rows) == 0 {
 		return dimStyle.Render("No tunnels configured.")
@@ -138,7 +191,7 @@ func (d dashboard) tableView() string {
 	b.WriteString(headerRow(widths))
 	for i, t := range d.rows {
 		b.WriteString("\n")
-		b.WriteString(renderRow(t, widths, i == d.cursor))
+		b.WriteString(renderTunnel(t, widths, i == d.cursor))
 	}
 	return b.String()
 }
@@ -154,29 +207,49 @@ func pad(s string, width int) string {
 
 // headerRow renders the aligned column header line.
 func headerRow(widths []int) string {
-	parts := make([]string, len(columns))
-	for i, h := range columns {
+	parts := make([]string, len(table.TunnelColumns))
+	for i, h := range table.TunnelColumns {
 		parts[i] = pad(h, widths[i])
 	}
 	return headerStyle.Render(strings.Join(parts, "  "))
 }
 
-// renderRow renders one tunnel row, highlighting it when it is the cursor row.
-func renderRow(t *tunnel.Desc, widths []int, selected bool) string {
-	raw := cells(t)
-	parts := make([]string, len(raw))
-	for i, c := range raw {
+// joinCells right-pads each raw cell to its column width and joins them.
+func joinCells(cells []string, widths []int) string {
+	parts := make([]string, len(cells))
+	for i, c := range cells {
 		parts[i] = pad(c, widths[i])
 	}
-	// Color the status cell unless the whole row is highlighted.
-	if !selected {
-		parts[0] = styleForStatus(t.Status).Render(parts[0])
+	return strings.Join(parts, "  ")
+}
+
+// renderTunnel renders one tunnel, highlighting the whole block when it is the
+// selected (cursor) tunnel. A single-forward tunnel is one inline line; a
+// multi-forward tunnel is a header line plus one indented sub-row per forward.
+func renderTunnel(t *tunnel.Desc, widths []int, selected bool) string {
+	if len(t.Forwards) == 1 {
+		return renderLine(inlineCells(t), widths, t.Status, selected)
 	}
-	line := strings.Join(parts, "  ")
+	lines := []string{renderLine(headerCells(t), widths, t.Status, selected)}
+	for i, f := range t.Forwards {
+		cells := forwardCells(f, i == len(t.Forwards)-1)
+		lines = append(lines, renderLine(cells, widths, t.Status, selected))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// renderLine renders one table line. When the line belongs to the selected
+// tunnel the whole line is highlighted; otherwise the status cell is colored.
+func renderLine(cells []string, widths []int, status tunnel.Status, selected bool) string {
 	if selected {
-		return cursorStyle.Render(line)
+		return cursorStyle.Render(joinCells(cells, widths))
 	}
-	return line
+	parts := make([]string, len(cells))
+	for i, c := range cells {
+		parts[i] = pad(c, widths[i])
+	}
+	parts[0] = styleForStatus(status).Render(parts[0])
+	return strings.Join(parts, "  ")
 }
 
 // footerView renders the fixed bottom area: a separator rule, a message line
