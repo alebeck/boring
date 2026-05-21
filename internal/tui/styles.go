@@ -21,7 +21,12 @@ var (
 	formLabelStyle  = lipgloss.NewStyle().Bold(true).Faint(true)
 )
 
-// statusStyles maps a tunnel status to the style used for its label.
+// branchStyle dims the ├/└ tree-branch glyphs on forward sub-rows so the tree
+// structure stays visible but recedes behind the content.
+var branchStyle = dimStyle
+
+// statusStyles maps a tunnel status to the style used for its indicator and
+// label: open green, reconn yellow, needs-auth magenta, closed dim.
 var statusStyles = map[tunnel.Status]lipgloss.Style{
 	tunnel.Open:      lipgloss.NewStyle().Foreground(lipgloss.Color("2")),
 	tunnel.Reconn:    lipgloss.NewStyle().Foreground(lipgloss.Color("3")),

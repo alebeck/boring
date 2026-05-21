@@ -14,6 +14,14 @@ import (
 // the dashboard and the CLI draw identical trees: table.TunnelColumns,
 // table.BranchMid, table.BranchLast, table.SubIndent.
 
+// Status-indicator glyphs: a filled dot for the live states (open, reconn,
+// needs auth) and a hollow dot for closed. The glyph alone cannot tell the
+// live states apart, so it is always shown next to the status word.
+const (
+	indicatorLive   = "●"
+	indicatorClosed = "○"
+)
+
 // statusText returns the human-readable label for a tunnel status.
 func statusText(s tunnel.Status) string {
 	switch s {
@@ -26,6 +34,22 @@ func statusText(s tunnel.Status) string {
 	default:
 		return "closed"
 	}
+}
+
+// statusIndicator returns the dot glyph for a tunnel status: filled for the
+// live states, hollow for closed.
+func statusIndicator(s tunnel.Status) string {
+	if s == tunnel.Closed {
+		return indicatorClosed
+	}
+	return indicatorLive
+}
+
+// statusCell returns the raw (unstyled) Status-column text: the indicator dot
+// followed by the status word, e.g. "● open" or "○ closed". renderLine colours
+// the whole cell per status; columnWidths sizes the column from this text.
+func statusCell(s tunnel.Status) string {
+	return statusIndicator(s) + " " + statusText(s)
 }
 
 // View renders the whole dashboard: a body region (title + table or active
@@ -117,7 +141,7 @@ func forwardLabel(f tunnel.Forward, last bool) string {
 func inlineCells(t *tunnel.Desc) []string {
 	f := t.Forwards[0]
 	return []string{
-		statusText(t.Status),
+		statusCell(t.Status),
 		t.Name,
 		f.LocalAddress.String(),
 		f.Mode.String(),
@@ -130,7 +154,7 @@ func inlineCells(t *tunnel.Desc) []string {
 // connection-level row: status, name, and via host. The forward columns are
 // blank — the forwards follow as indented sub-rows.
 func headerCells(t *tunnel.Desc) []string {
-	return []string{statusText(t.Status), t.Name, "", "", "", t.Host}
+	return []string{statusCell(t.Status), t.Name, "", "", "", t.Host}
 }
 
 // forwardCells returns the raw cell text for one indented forward sub-row. The
@@ -228,19 +252,21 @@ func joinCells(cells []string, widths []int) string {
 // multi-forward tunnel is a header line plus one indented sub-row per forward.
 func renderTunnel(t *tunnel.Desc, widths []int, selected bool) string {
 	if len(t.Forwards) == 1 {
-		return renderLine(inlineCells(t), widths, t.Status, selected)
+		return renderLine(inlineCells(t), widths, t.Status, selected, false)
 	}
-	lines := []string{renderLine(headerCells(t), widths, t.Status, selected)}
+	lines := []string{renderLine(headerCells(t), widths, t.Status, selected, false)}
 	for i, f := range t.Forwards {
 		cells := forwardCells(f, i == len(t.Forwards)-1)
-		lines = append(lines, renderLine(cells, widths, t.Status, selected))
+		lines = append(lines, renderLine(cells, widths, t.Status, selected, true))
 	}
 	return strings.Join(lines, "\n")
 }
 
 // renderLine renders one table line. When the line belongs to the selected
-// tunnel the whole line is highlighted; otherwise the status cell is colored.
-func renderLine(cells []string, widths []int, status tunnel.Status, selected bool) string {
+// tunnel the whole line is highlighted and no per-cell colour is applied — the
+// highlight takes precedence. Otherwise the status cell is coloured per status
+// and, on a forward sub-row, the tree-branch glyph is dimmed.
+func renderLine(cells []string, widths []int, status tunnel.Status, selected, forward bool) string {
 	if selected {
 		return cursorStyle.Render(joinCells(cells, widths))
 	}
@@ -249,7 +275,22 @@ func renderLine(cells []string, widths []int, status tunnel.Status, selected boo
 		parts[i] = pad(c, widths[i])
 	}
 	parts[0] = styleForStatus(status).Render(parts[0])
+	if forward {
+		parts[1] = dimBranch(parts[1])
+	}
 	return strings.Join(parts, "  ")
+}
+
+// dimBranch dims the ├/└ tree-branch glyph at the start of a forward sub-row's
+// Name cell, leaving the indent and the label in the default foreground.
+func dimBranch(nameCell string) string {
+	for _, branch := range []string{table.BranchMid, table.BranchLast} {
+		glyph := table.SubIndent + branch
+		if rest, ok := strings.CutPrefix(nameCell, glyph); ok {
+			return table.SubIndent + branchStyle.Render(branch) + rest
+		}
+	}
+	return nameCell
 }
 
 // footerView renders the fixed bottom area: a separator rule, a message line

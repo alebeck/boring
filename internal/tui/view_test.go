@@ -265,3 +265,104 @@ func TestSelectedHandlersActOnCursorTunnel(t *testing.T) {
 func ptrDesc(d tunnel.Desc) *tunnel.Desc {
 	return &d
 }
+
+// statusRowOf returns the rendered table line carrying the given tunnel name,
+// skipping the bold header line (which contains the "Status" column title).
+func statusRowOf(out, name string) (string, bool) {
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, name) && !strings.Contains(l, "Status") {
+			return l, true
+		}
+	}
+	return "", false
+}
+
+func TestStatusIndicatorGlyph(t *testing.T) {
+	// Live states get a filled dot; closed gets a hollow dot.
+	for s, want := range map[tunnel.Status]string{
+		tunnel.Open:      indicatorLive,
+		tunnel.Reconn:    indicatorLive,
+		tunnel.NeedsAuth: indicatorLive,
+		tunnel.Closed:    indicatorClosed,
+	} {
+		if got := statusIndicator(s); got != want {
+			t.Errorf("statusIndicator(%v) = %q, want %q", s, got, want)
+		}
+	}
+}
+
+func TestStatusCellCarriesIndicatorAndWord(t *testing.T) {
+	// The Status cell pairs the dot with the word so the live states stay
+	// distinguishable (a bare dot cannot tell open from reconn).
+	cases := map[tunnel.Status]string{
+		tunnel.Open:      indicatorLive + " open",
+		tunnel.Reconn:    indicatorLive + " reconn",
+		tunnel.NeedsAuth: indicatorLive + " needs auth",
+		tunnel.Closed:    indicatorClosed + " closed",
+	}
+	for s, want := range cases {
+		if got := statusCell(s); got != want {
+			t.Errorf("statusCell(%v) = %q, want %q", s, got, want)
+		}
+	}
+}
+
+func TestStatusCellColouredPerStatus(t *testing.T) {
+	// Each status renders its Status cell through its own style. Comparing
+	// against styleForStatus(...).Render of the expected padded text is
+	// profile-agnostic: both sides take the identical style path.
+	for _, s := range []tunnel.Status{
+		tunnel.Open, tunnel.Reconn, tunnel.NeedsAuth, tunnel.Closed,
+	} {
+		desc := singleForward("svc")
+		desc.Status = s
+		d := dashboardWithDescs(desc)
+		out := d.View()
+
+		row, ok := statusRowOf(out, "svc")
+		if !ok {
+			t.Fatalf("status %v: no row found for tunnel:\n%s", s, out)
+		}
+		widths := columnWidths(d.rows)
+		want := styleForStatus(s).Render(pad(statusCell(s), widths[0]))
+		if !strings.Contains(row, want) {
+			t.Fatalf("status %v: row %q should contain styled %q", s, row, want)
+		}
+	}
+}
+
+func TestForwardBranchesAreDimmed(t *testing.T) {
+	// The ├/└ glyphs on forward sub-rows render through the dim branch style;
+	// the indent before them and the label after stay in the default colour.
+	d := dashboardWithDescs(multiForward("prod",
+		tunnel.Forward{Name: "db", LocalAddress: "5432", RemoteAddress: "db:5432"},
+		tunnel.Forward{Name: "cache", LocalAddress: "6379", RemoteAddress: "redis:6379"},
+	))
+	out := d.View()
+
+	for _, branch := range []string{table.BranchMid, table.BranchLast} {
+		styled := branchStyle.Render(branch)
+		if !strings.Contains(out, styled) {
+			t.Fatalf("branch %q should render dimmed (%q):\n%s", branch, styled, out)
+		}
+	}
+}
+
+func TestSelectionBeatsStatusColourAndBranchDim(t *testing.T) {
+	// A selected tunnel block is highlighted as a whole through cursorStyle
+	// over plain cells — no per-status colour, no dim branch fights it.
+	desc := multiForward("prod",
+		tunnel.Forward{Name: "db", LocalAddress: "5432", RemoteAddress: "db:5432"},
+		tunnel.Forward{Name: "cache", LocalAddress: "6379", RemoteAddress: "redis:6379"},
+	)
+	desc.Status = tunnel.Open
+	widths := columnWidths([]*tunnel.Desc{&desc})
+
+	selected := renderTunnel(&desc, widths, true)
+	for i, line := range strings.Split(selected, "\n") {
+		want := cursorStyle.Render(strings.Split(plainLines(&desc, widths), "\n")[i])
+		if line != want {
+			t.Fatalf("selected line %d not highlighted via cursorStyle:\n got %q\nwant %q", i, line, want)
+		}
+	}
+}
