@@ -350,6 +350,8 @@ func helpView() string {
 		"  a        add a new tunnel",
 		"  e        edit the selected tunnel",
 		"  d        delete the selected tunnel",
+		"  ctrl+f   add a forward (in the add/edit form)",
+		"  ctrl+x   remove the focused forward (in the form)",
 		"  ?        toggle this help",
 		"  q        quit",
 		"  ctrl+c   quit",
