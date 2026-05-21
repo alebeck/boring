@@ -3,3 +3,7 @@
 /cover/
 /cover_lines.out
 /boring.test
+
+# Local-only: planning docs and Claude Code guidance, not tracked.
+/CLAUDE.md
+/docs/plans/
