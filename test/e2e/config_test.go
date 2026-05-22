@@ -2,8 +2,11 @@ package e2e
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	config_pkg "github.com/alebeck/boring/internal/config"
 )
 
 func TestConfigCreate(t *testing.T) {
@@ -117,5 +120,106 @@ func TestInvalidGroup(t *testing.T) {
 	}
 	if !strings.Contains(out, "group names cannot") {
 		t.Errorf("output did not indicate invalid group name: %s", out)
+	}
+}
+
+func TestEnvVarExpansionInHost(t *testing.T) {
+	// Create a config file with environment variable references in the host field
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.toml")
+
+	cfgContent := `[[tunnels]]
+name = "envtest"
+host = "${BORING_TEST_HOST}"
+local = 49711
+remote = "localhost:49712"
+
+[[tunnels]]
+name = "envtest2"
+host = "${BORING_TEST_USER}@${BORING_TEST_HOST}"
+local = 49713
+remote = "localhost:49714"
+
+[[tunnels]]
+name = "noenv"
+host = "static-host.example.com"
+local = 49715
+remote = "localhost:49716"
+`
+	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	// Set environment variables
+	t.Setenv("BORING_TEST_HOST", "myserver.example.com")
+	t.Setenv("BORING_TEST_USER", "testuser")
+
+	// Override the config path and load
+	t.Setenv("BORING_CONFIG", cfgPath)
+
+	// We need to reload the config path since init() already ran
+	origPath := config_pkg.Path
+	config_pkg.Path = cfgPath
+	defer func() { config_pkg.Path = origPath }()
+
+	cfg, err := config_pkg.Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	tests := []struct {
+		name         string
+		expectedHost string
+	}{
+		{"envtest", "myserver.example.com"},
+		{"envtest2", "testuser@myserver.example.com"},
+		{"noenv", "static-host.example.com"},
+	}
+
+	for _, tt := range tests {
+		desc, ok := cfg.TunnelsMap[tt.name]
+		if !ok {
+			t.Errorf("tunnel %q not found in config", tt.name)
+			continue
+		}
+		if desc.Host != tt.expectedHost {
+			t.Errorf("tunnel %q: expected host %q, got %q", tt.name, tt.expectedHost, desc.Host)
+		}
+	}
+}
+
+func TestEnvVarExpansionUnsetVar(t *testing.T) {
+	// When an env var is not set, os.Expand replaces it with empty string
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.toml")
+
+	cfgContent := `[[tunnels]]
+name = "unsetenv"
+host = "${BORING_UNSET_VAR_12345}"
+local = 49711
+remote = "localhost:49712"
+`
+	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	// Make sure the variable is not set
+	os.Unsetenv("BORING_UNSET_VAR_12345")
+
+	origPath := config_pkg.Path
+	config_pkg.Path = cfgPath
+	defer func() { config_pkg.Path = origPath }()
+
+	cfg, err := config_pkg.Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	desc, ok := cfg.TunnelsMap["unsetenv"]
+	if !ok {
+		t.Fatal("tunnel 'unsetenv' not found")
+	}
+	if desc.Host != "" {
+		t.Errorf("expected empty host for unset env var, got %q", desc.Host)
 	}
 }

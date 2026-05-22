@@ -69,6 +69,11 @@ func Load() (*Config, error) {
 		}
 	}
 
+	// Expand environment variable references in Host fields
+	for i := range cfg.Tunnels {
+		cfg.Tunnels[i].Host = os.Expand(cfg.Tunnels[i].Host, os.Getenv)
+	}
+
 	// Create a map of tunnel names to tunnel pointers for easy lookup later
 	m, err := buildTunnelsMap(cfg.Tunnels)
 	if err != nil {
