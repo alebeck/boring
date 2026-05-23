@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/alebeck/ssh_config v0.1.5
+	github.com/alebeck/ssh_config v0.2.0
 	golang.org/x/crypto v0.47.0
 	golang.org/x/net v0.49.0
 	golang.org/x/sync v0.19.0
