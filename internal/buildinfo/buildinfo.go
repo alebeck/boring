@@ -10,6 +10,10 @@ var (
 )
 
 func init() {
+	loadEnvOverrides()
+}
+
+func loadEnvOverrides() {
 	if c := os.Getenv("BORING_COMMIT_OVERRIDE"); c != "" {
 		Commit = c
 	}
