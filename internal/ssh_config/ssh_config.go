@@ -244,22 +244,15 @@ func (sc *SSHConfig) loadIDs() (fileIDs, agentCertIDs, agentCfgIDs, agentOtherID
 	cfgFP := make(map[string]struct{}, len(sc.IdentityFiles))
 
 	for _, f := range sc.IdentityFiles {
-		s, err := loadPrivateKey(f)
-		if err != nil {
-			log.Warningf("key file %q could not be added: %v", f, err)
-			// Here we still try to load the corresponding public key to mark it configured
-			if pub, err := loadPublicKey(f + ".pub"); err == nil {
-				// If .pub is a certificate, fingerprint its underlying key.
-				if c, ok := pub.(*ssh.Certificate); ok {
-					cfgFP[keyFP(c.Key)] = struct{}{}
-				} else {
-					cfgFP[keyFP(pub)] = struct{}{}
-				}
-			}
+		s, fp, ok := loadIdentity(f)
+		if !ok {
+			log.Warningf("key file %q could not be added", f)
 			continue
 		}
-		fileIDs = append(fileIDs, identity{signer: s, path: f})
-		cfgFP[keyFP(s.PublicKey())] = struct{}{}
+		cfgFP[fp] = struct{}{}
+		if s != nil {
+			fileIDs = append(fileIDs, identity{signer: s, path: f})
+		}
 	}
 
 	if agSigs, err := agent.GetSigners(); err != nil {
@@ -415,6 +408,29 @@ func (sc *SSHConfig) EnsureUser() {
 			sc.User = u.Username
 		}
 	}
+}
+
+// loadIdentity resolves an IdentityFile entry to a signer (if a private key
+// is available locally) and the public-key fingerprint to treat as configured.
+// It tries f as a private key first; if that fails, it tries f itself as a
+// public key (OpenSSH allows `IdentityFile foo.pub` when the private key lives
+// in ssh-agent), then a sibling f+".pub". Certificate public keys are
+// fingerprinted by their underlying key.
+func loadIdentity(f string) (signer ssh.Signer, fp string, ok bool) {
+	if s, err := loadPrivateKey(f); err == nil {
+		return s, keyFP(s.PublicKey()), true
+	}
+	for _, p := range []string{f, f + ".pub"} {
+		pub, err := loadPublicKey(p)
+		if err != nil {
+			continue
+		}
+		if c, ok := pub.(*ssh.Certificate); ok {
+			return nil, keyFP(c.Key), true
+		}
+		return nil, keyFP(pub), true
+	}
+	return nil, "", false
 }
 
 func loadPrivateKey(path string) (ssh.Signer, error) {
