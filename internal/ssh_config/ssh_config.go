@@ -419,6 +419,9 @@ func (sc *SSHConfig) EnsureUser() {
 func loadIdentity(f string) (signer ssh.Signer, fp string, ok bool) {
 	if s, err := loadPrivateKey(f); err == nil {
 		return s, keyFP(s.PublicKey()), true
+	} else {
+		log.Debugf("private key %q could not be loaded: %v. " +
+			"Now trying as public key (including .pub sibling).", f, err)
 	}
 	for _, p := range []string{f, f + ".pub"} {
 		pub, err := loadPublicKey(p)
