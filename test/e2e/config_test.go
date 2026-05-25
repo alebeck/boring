@@ -115,7 +115,7 @@ func TestInvalidGroup(t *testing.T) {
 	if c != 1 {
 		t.Fatalf("exit code %d, expected 1", c)
 	}
-	if !strings.Contains(out, "group names cannot") {
+	if !strings.Contains(out, "groups cannot") {
 		t.Errorf("output did not indicate invalid group name: %s", out)
 	}
 }
