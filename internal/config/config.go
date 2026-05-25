@@ -100,14 +100,14 @@ func buildTunnelsMap(tunnels []tunnel.Desc) (map[string]*tunnel.Desc, error) {
 		if t.Name == "" || strings.Contains(t.Name, " ") ||
 			specialPrefix(t.Name) || containsGlob(t.Name) {
 			return nil, fmt.Errorf("tunnel names cannot be empty, contain spaces,"+
-				" start with special characters, or contain glob characters \"*?[\"."+
-				" Found '%v'", t.Name)
+				" start with special characters, or contain glob characters '*?['."+
+				" Found '%v'.", t.Name)
 		}
 		if t.Group != "" && (strings.Contains(t.Group, " ") ||
-			specialPrefix(t.Group) || containsGlob(t.Group)) {
-			return nil, fmt.Errorf("group names cannot contain spaces,"+
-				" start with special characters, or contain glob characters \"*?[\"."+
-				" Found '%v'", t.Group)
+			specialPrefix(t.Group) || containsGlob(t.Group) || t.Group == "default") {
+			return nil, fmt.Errorf("groups cannot be named 'default', contain spaces,"+
+				" start with special characters, or contain glob characters '*?['."+
+				" Found '%v'.", t.Group)
 		}
 		m[t.Name] = t
 	}

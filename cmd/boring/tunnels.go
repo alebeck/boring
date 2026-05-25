@@ -42,7 +42,7 @@ func prepare() (*config.Config, error) {
 				conf = &config.Config{}
 				return nil
 			}
-			return fmt.Errorf("could not load config: %v", err)
+			return fmt.Errorf("could not load boring config: %v", err)
 		}
 		return nil
 	})
