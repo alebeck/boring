@@ -75,6 +75,7 @@ func (t *Tunnel) Open() (err error) {
 	log.Debugf("%v: connected to server", t.Name)
 
 	if err = t.makeListener(); err != nil {
+		t.client.Close()
 		return fmt.Errorf("cannot listen: %v", err)
 	}
 	log.Debugf("%v: listening on %v", t.Name, t.listener.Addr())
