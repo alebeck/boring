@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -28,6 +29,62 @@ func TestConfigCreate(t *testing.T) {
 		t.Fatalf("expected file %q to exist, but it does not", cfg.boringConfig)
 	} else if err != nil {
 		t.Fatalf("error checking file %q: %v", cfg.boringConfig, err)
+	}
+}
+
+func TestConfigCreateMkdirFails(t *testing.T) {
+	cfg := defaultConfig
+	// Place a regular file where ensureConfig will try to MkdirAll a parent dir.
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0600); err != nil {
+		t.Fatalf("failed to create blocker file: %v", err)
+	}
+	cfg.boringConfig = filepath.Join(blocker, "config.toml")
+
+	env, cancel, err := makeEnvWithDaemon(cfg, t)
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	defer cancel()
+
+	c, out, err := cliCommand(env, "list")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 1 {
+		t.Fatalf("exit code %d, expected 1", c)
+	}
+	if !strings.Contains(out, "could not create config file") {
+		t.Errorf("output did not indicate config creation failure: %s", out)
+	}
+}
+
+func TestConfigCreateOpenFails(t *testing.T) {
+	cfg := defaultConfig
+	// Pre-create a read-only parent directory so OpenFile with O_CREATE fails
+	// while MkdirAll on the existing dir succeeds.
+	parent := filepath.Join(t.TempDir(), "ro")
+	if err := os.Mkdir(parent, 0500); err != nil {
+		t.Fatalf("failed to create read-only dir: %v", err)
+	}
+	t.Cleanup(func() { os.Chmod(parent, 0700) })
+	cfg.boringConfig = filepath.Join(parent, "config.toml")
+
+	env, cancel, err := makeEnvWithDaemon(cfg, t)
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	defer cancel()
+
+	c, out, err := cliCommand(env, "list")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 1 {
+		t.Fatalf("exit code %d, expected 1", c)
+	}
+	if !strings.Contains(out, "could not create config file") {
+		t.Errorf("output did not indicate config creation failure: %s", out)
 	}
 }
 
