@@ -69,6 +69,24 @@ func Load() (*Config, error) {
 		}
 	}
 
+	// Expand environment variable references in these fields:
+	// Host
+	// Name
+	// LocalAddress
+	// RemoteAddress
+	// User
+	// IdentityFile
+	// Group
+	for i := range cfg.Tunnels {
+		cfg.Tunnels[i].Host = os.Expand(cfg.Tunnels[i].Host, expandWithDefault)
+		cfg.Tunnels[i].Name = os.Expand(cfg.Tunnels[i].Name, expandWithDefault)
+		cfg.Tunnels[i].LocalAddress = tunnel.StringOrInt(os.Expand(cfg.Tunnels[i].LocalAddress.String(), expandWithDefault))
+		cfg.Tunnels[i].RemoteAddress = tunnel.StringOrInt(os.Expand(cfg.Tunnels[i].RemoteAddress.String(), expandWithDefault))
+		cfg.Tunnels[i].User = os.Expand(cfg.Tunnels[i].User, expandWithDefault)
+		cfg.Tunnels[i].IdentityFile = os.Expand(cfg.Tunnels[i].IdentityFile, expandWithDefault)
+		cfg.Tunnels[i].Group = os.Expand(cfg.Tunnels[i].Group, expandWithDefault)
+	}
+
 	// Create a map of tunnel names to tunnel pointers for easy lookup later
 	m, err := buildTunnelsMap(cfg.Tunnels)
 	if err != nil {
@@ -126,4 +144,19 @@ func specialPrefix(s string) bool {
 
 func containsGlob(s string) bool {
 	return strings.ContainsAny(s, "*?[")
+}
+
+// expandWithDefault resolves an environment variable reference, supporting
+// the ${VAR:-default} syntax. If the variable is unset or empty and a default
+// is provided after ":-", the default value is returned.
+func expandWithDefault(key string) string {
+	if idx := strings.Index(key, ":-"); idx != -1 {
+		varName := key[:idx]
+		defaultVal := key[idx+2:]
+		if val := os.Getenv(varName); val != "" {
+			return val
+		}
+		return defaultVal
+	}
+	return os.Getenv(key)
 }
