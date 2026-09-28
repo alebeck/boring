@@ -260,7 +260,7 @@ func (sc *SSHConfig) loadIDs() (fileIDs, agentCertIDs, agentCfgIDs, agentOtherID
 	} else {
 		for _, s := range agSigs {
 			// Agent may return certificate identities (public key is a cert)
-			if c, ok := s.PublicKey().(*ssh.Certificate); ok {
+			if c, ok := asCert(s.PublicKey()); ok {
 				fp := keyFP(c.Key)
 				if _, ok := cfgFP[fp]; ok || !sc.IdentitiesOnly {
 					agentCertIDs = append(agentCertIDs, identity{signer: s})
@@ -482,8 +482,20 @@ func loadCert(path string) (*ssh.Certificate, error) {
 	return cert, nil
 }
 
+// asCert returns the certificate behind pub, if it is one. Keys listed by
+// the agent come as *agent.Key regardless of their type, so a plain type
+// assertion is not enough; the key is parsed from its wire format instead.
+func asCert(pub ssh.PublicKey) (*ssh.Certificate, bool) {
+	parsed, err := ssh.ParsePublicKey(pub.Marshal())
+	if err != nil {
+		return nil, false
+	}
+	c, ok := parsed.(*ssh.Certificate)
+	return c, ok
+}
+
 func certify(cert *ssh.Certificate, sig ssh.Signer) (ssh.Signer, error) {
-	if _, ok := sig.PublicKey().(*ssh.Certificate); ok {
+	if _, ok := asCert(sig.PublicKey()); ok {
 		return nil, fmt.Errorf("signer is already a certificate identity")
 	}
 	if keyFP(sig.PublicKey()) != keyFP(cert.Key) {
