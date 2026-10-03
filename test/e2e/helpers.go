@@ -20,6 +20,10 @@ const (
 	binary      = "../../boring.test"
 	cliTimeout  = 10 * time.Second
 	connTimeout = 5 * time.Second
+	// Generous on purpose: the first run of a freshly linked binary on
+	// macOS, or a binary built with -race, can take well over 500ms to
+	// start up.
+	daemonStartTimeout = 5 * time.Second
 )
 
 var testMsg = []byte("hello through tunnel")
@@ -111,25 +115,30 @@ func daemonWithCancel(env []string) (context.CancelFunc, error) {
 		return nil, err
 	}
 
-	// Prevent zombie processes
+	// Prevent zombie processes. Wait must only be called once, so
+	// cancel waits on the channel instead of calling it again.
+	exited := make(chan struct{})
 	go func() {
 		cmd.Wait()
+		close(exited)
 	}()
 
 	cancel := func() {
 		cmd.Process.Signal(syscall.SIGTERM)
-		cmd.Wait()
+		<-exited
 	}
 
 	// Wait for daemon to start
 	wait := time.NewTimer(0.)
 	waitTime := 2 * time.Millisecond
-	timeout := time.After(500 * time.Millisecond)
+	timeout := time.After(daemonStartTimeout)
 	sock := getEnv(env, "BORING_SOCK")
 
 	for {
 		select {
 		case <-timeout:
+			// Don't leave the process behind when giving up on it
+			cancel()
 			return nil, fmt.Errorf("daemon not responsive after timeout")
 		case <-wait.C:
 			if conn, err := net.Dial("unix", sock); err == nil {

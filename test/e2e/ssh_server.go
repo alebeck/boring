@@ -314,6 +314,12 @@ func (s *sshServer) resetKeepAlives() {
 	s.keepAlives = 0
 }
 
+func (s *sshServer) getKeepAlives() int {
+	s.keepAliveMu.Lock()
+	defer s.keepAliveMu.Unlock()
+	return s.keepAlives
+}
+
 func (s *sshServer) incrementKeepAlives() {
 	s.keepAliveMu.Lock()
 	defer s.keepAliveMu.Unlock()
