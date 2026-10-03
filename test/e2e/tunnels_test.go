@@ -109,8 +109,7 @@ func TestOpen(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(stripANSI(out)), "\n")
 
 	// Check that test tunnel is now open
-	re := regexp.MustCompile(`^\d{2}m\d{2}s$`)
-	if !re.MatchString(strings.Fields(lines[1])[0]) {
+	if !openStatus.MatchString(strings.Fields(lines[1])[0]) {
 		t.Errorf("test tunnel not open in list output: %s", out)
 	}
 }
@@ -537,6 +536,32 @@ func TestCloseGroup(t *testing.T) {
 	}
 }
 
+var openStatus = regexp.MustCompile(`^\d{2}m\d{2}s$`)
+
+// waitForStatus polls 'list' until the first tunnel's status satisfies ok.
+func waitForStatus(t *testing.T, env []string, desc string, ok func(string) bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		c, out, err := cliCommand(env, "list")
+		if err != nil {
+			t.Fatalf("failed to run CLI command: %v", err)
+		}
+		if c != 0 {
+			t.Fatalf("exit code %d: %s", c, out)
+		}
+		lines := strings.Split(strings.TrimSpace(stripANSI(out)), "\n")
+		s := strings.Fields(lines[1])[0]
+		if ok(s) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("tunnel not %s, status is %q", desc, s)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func makeListener(addr string) (net.Listener, error) {
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -747,23 +772,13 @@ func TestTunnelReconnect(t *testing.T) {
 	server.pause()
 	server.closeAll()
 
-	// verify tunnel is in Reconn state
-	c, out, err = cliCommand(env, "list")
-	if err != nil {
-		t.Fatalf("failed to run CLI command: %v", err)
-	}
-	if c != 0 {
-		t.Fatalf("exit code %d: %s", c, out)
-	}
-	lines := strings.Split(strings.TrimSpace(stripANSI(out)), "\n")
-
-	if strings.Fields(lines[1])[0] != "reconn" {
-		t.Errorf("test tunnel not reconnecting in list: %s", out)
-	}
+	// The daemon notices the dropped connection asynchronously, so poll
+	// for the state changes instead of sleeping a fixed amount.
+	waitForStatus(t, env, "reconn", func(s string) bool { return s == "reconn" })
 
 	// Reconnect the server
 	server.resume()
-	time.Sleep(500 * time.Millisecond) // Plenty of time for reconnection
+	waitForStatus(t, env, "open", openStatus.MatchString)
 
 	testTunnel(t, "localhost:49711", "localhost:49712")
 }
@@ -932,8 +947,8 @@ func TestTunnelKeepAlive(t *testing.T) {
 	// keep-alive should be sent within a second for this tunnel
 	time.Sleep(1100 * time.Millisecond)
 
-	if server.keepAlives != 1 {
-		t.Fatalf("expected 1 keep-alive, got %d", server.keepAlives)
+	if n := server.getKeepAlives(); n != 1 {
+		t.Fatalf("expected 1 keep-alive, got %d", n)
 	}
 }
 

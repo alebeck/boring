@@ -65,9 +65,12 @@ func testDaemonLaunch(t *testing.T, env []string) string {
 		t.Fatalf("failed to kill daemon: %v", err)
 	}
 
-	// Finally check for graceful termination
-	time.Sleep(50 * time.Millisecond)
-
+	// Finally check for graceful termination. Poll instead of sleeping a
+	// fixed amount, since shutdown is slower under the race detector.
+	deadline := time.Now().Add(2 * time.Second)
+	for pidRunning(pid) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
 	if pidRunning(pid) {
 		t.Fatalf("pid %d running", pid)
 	}
