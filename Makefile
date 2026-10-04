@@ -40,7 +40,7 @@ build-test:
 	go build -o $(TEST_BINARY) ./cmd/boring
 
 test: build-test
-	go test ./... 2>&1 | grep -v '\[no test files\]'
+	go test ./...
 
 build-cover:
 	go build -cover -coverpkg=./... -o $(TEST_BINARY) ./cmd/boring
