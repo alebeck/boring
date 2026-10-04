@@ -18,6 +18,7 @@ import (
 	"github.com/alebeck/boring/internal/ipc"
 	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/tunnel"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -49,6 +50,8 @@ type daemon struct {
 	// TODO: write proper concurrent map structure for this
 	tunnels map[string]*tunnel.Tunnel
 	mutex   sync.RWMutex
+	// Merges concurrent opens of the same tunnel into one attempt
+	opening singleflight.Group
 
 	once sync.Once
 	wg   sync.WaitGroup
@@ -157,33 +160,54 @@ func (d *daemon) openTunnel(conn net.Conn, desc *tunnel.Desc) {
 	var err error
 	defer func() { respond(conn, err, nil) }()
 
+	// Clients joining an open in progress report the tunnel as already running
+	leader := false
+	_, err, _ = d.opening.Do(desc.Name, func() (any, error) {
+		leader = true
+		return nil, d.open(desc)
+	})
+	if err == nil && !leader {
+		err = AlreadyRunning
+	}
+	if err != nil {
+		log.Errorf("%v: could not open: %v", desc.Name, err)
+	}
+}
+
+func (d *daemon) open(desc *tunnel.Desc) error {
 	d.mutex.RLock()
 	_, exists := d.tunnels[desc.Name]
 	d.mutex.RUnlock()
 	if exists {
-		err = AlreadyRunning
-		log.Errorf("%v: could not open: %v", desc.Name, err)
-		return
+		return AlreadyRunning
 	}
 
 	t := tunnel.FromDesc(desc)
-	if err = t.Open(); err != nil {
-		log.Errorf("%v: could not open: %v", t.Name, err)
-		return
+	if err := t.Open(); err != nil {
+		return err
 	}
 
 	d.mutex.Lock()
-	d.tunnels[t.Name] = t
+	d.tunnels[desc.Name] = t
 	d.mutex.Unlock()
 
 	// Register closing logic
 	go func() {
 		<-t.Closed
-		d.mutex.Lock()
-		delete(d.tunnels, t.Name)
-		d.mutex.Unlock()
-		log.Infof("Closed tunnel %s", t.Name)
+		d.removeTunnel(t)
+		log.Infof("Closed tunnel %s", desc.Name)
 	}()
+	return nil
+}
+
+// removeTunnel forgets about t, unless its name has meanwhile been taken
+// by a tunnel that was opened after it.
+func (d *daemon) removeTunnel(t *tunnel.Tunnel) {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	if d.tunnels[t.Name] == t {
+		delete(d.tunnels, t.Name)
+	}
 }
 
 func (d *daemon) closeTunnel(conn net.Conn, q *tunnel.Desc) {
@@ -204,13 +228,16 @@ func (d *daemon) closeTunnel(conn net.Conn, q *tunnel.Desc) {
 		return
 	}
 	<-t.Closed
+	// Also remove it here, so it is gone by the time the client gets the
+	// response, rather than whenever the closing goroutine gets to it.
+	d.removeTunnel(t)
 }
 
 func (d *daemon) listTunnels(conn net.Conn) {
 	d.mutex.RLock()
 	ts := make(map[string]tunnel.Desc, len(d.tunnels))
 	for n, t := range d.tunnels {
-		ts[n] = *t.Desc
+		ts[n] = t.Snapshot()
 	}
 	d.mutex.RUnlock()
 	respond(conn, nil, ts)

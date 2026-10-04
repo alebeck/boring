@@ -46,11 +46,15 @@ type Tunnel struct {
 	hops       []ssh_config.Hop
 	Closed     chan struct{}
 	stop       chan struct{}
+	stopOnce   sync.Once
 	listener   net.Listener
 	wg         sync.WaitGroup
 	client     *ssh.Client
 	localAddr  *address
 	remoteAddr *address
+	// mu guards Status and LastConn, which the tunnel's own goroutines
+	// update while the daemon may be reading them for a listing.
+	mu sync.Mutex
 	*Desc
 }
 
@@ -85,12 +89,29 @@ func (t *Tunnel) Open() (err error) {
 		t.Closed = make(chan struct{})
 	}
 
+	t.mu.Lock()
+	t.Status = Open
+	t.LastConn = time.Now()
+	t.mu.Unlock()
+
 	go t.run()
 
 	log.Infof("%v: opened tunnel", t.Name)
-	t.Status = Open
-	t.LastConn = time.Now()
 	return
+}
+
+// Snapshot returns a copy of the tunnel's description that is safe to take
+// while the tunnel is running.
+func (t *Tunnel) Snapshot() Desc {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return *t.Desc
+}
+
+func (t *Tunnel) setStatus(s Status) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.Status = s
 }
 
 func (t *Tunnel) prepare() error {
@@ -175,7 +196,7 @@ func (t *Tunnel) makeClient() error {
 	}
 
 	// Wait for all wrapped clients to close in case of tunnel closing or reconnection
-	go t.waitFor(func() { wg.Wait() })
+	t.goWait(wg.Wait)
 
 	t.client = c
 	return nil
@@ -222,8 +243,8 @@ func (t *Tunnel) run() {
 		close(disconn)
 	}()
 
-	go t.waitFor(func() { t.keepAlive(disconn) })
-	go t.waitFor(func() { t.handleConns() })
+	t.goWait(func() { t.keepAlive(disconn) })
+	t.goWait(t.handleConns)
 
 	stopped := false
 	select {
@@ -243,7 +264,7 @@ func (t *Tunnel) run() {
 			return
 		}
 	}
-	t.Status = Closed
+	t.setStatus(Closed)
 	close(t.Closed)
 }
 
@@ -290,7 +311,7 @@ func (t *Tunnel) handleForward() {
 			log.Errorf("%v: could not accept: %v", t.Name, err)
 			return
 		}
-		go t.waitFor(func() {
+		t.goWait(func() {
 			addr := t.remoteAddr
 			if t.Mode == Remote || t.Mode == RemoteSocks {
 				addr = t.localAddr
@@ -335,12 +356,12 @@ func (t *Tunnel) handleSocks() {
 			log.Errorf("%v: could not accept: %v", t.Name, err)
 			return
 		}
-		go t.waitFor(func() { serv.ServeConn(conn) })
+		t.goWait(func() { serv.ServeConn(conn) })
 	}
 }
 
 func (t *Tunnel) reconnectLoop() error {
-	t.Status = Reconn
+	t.setStatus(Reconn)
 	timeout := time.After(reconnectTimeout)
 	wait := time.NewTimer(2 * time.Millisecond) // First time try (essent.) immediately
 	waitTime := initReconnectWait
@@ -368,20 +389,28 @@ func (t *Tunnel) reconnectLoop() error {
 	}
 }
 
+// Close signals the tunnel to stop. It is safe to call concurrently and
+// more than once; wait on Closed for the tunnel to actually shut down.
 func (t *Tunnel) Close() error {
-	if t.Status == Closed {
+	t.mu.Lock()
+	closed := t.Status == Closed
+	t.mu.Unlock()
+	if closed {
 		return fmt.Errorf("trying to close a closed tunnel")
 	}
-	close(t.stop)
+	t.stopOnce.Do(func() { close(t.stop) })
 	return nil
 }
 
-// Logic registered with waitFor will be waited for upon tunnel closing
-// and reconnecting.
-func (t *Tunnel) waitFor(f func()) {
+// goWait runs f in a new goroutine that will be waited for upon tunnel
+// closing and reconnecting. The wait group is incremented before the
+// goroutine starts, so a concurrent Wait cannot miss it.
+func (t *Tunnel) goWait(f func()) {
 	t.wg.Add(1)
-	defer t.wg.Done()
-	f()
+	go func() {
+		defer t.wg.Done()
+		f()
+	}()
 }
 
 func parseAddr(addr string, allowShort bool) (*address, error) {
