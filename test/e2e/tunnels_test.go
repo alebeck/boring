@@ -538,20 +538,25 @@ func TestCloseGroup(t *testing.T) {
 
 var openStatus = regexp.MustCompile(`^\d{2}m\d{2}s$`)
 
+// listStatus returns the first tunnel's status from 'list'.
+func listStatus(t *testing.T, env []string) string {
+	c, out, err := cliCommand(env, "list")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 0 {
+		t.Fatalf("exit code %d: %s", c, out)
+	}
+	lines := strings.Split(strings.TrimSpace(stripANSI(out)), "\n")
+	return strings.Fields(lines[1])[0]
+}
+
 // waitForStatus polls 'list' until the first tunnel's status satisfies ok.
 func waitForStatus(t *testing.T, env []string, desc string, ok func(string) bool) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		c, out, err := cliCommand(env, "list")
-		if err != nil {
-			t.Fatalf("failed to run CLI command: %v", err)
-		}
-		if c != 0 {
-			t.Fatalf("exit code %d: %s", c, out)
-		}
-		lines := strings.Split(strings.TrimSpace(stripANSI(out)), "\n")
-		s := strings.Fields(lines[1])[0]
+		s := listStatus(t, env)
 		if ok(s) {
 			return
 		}
