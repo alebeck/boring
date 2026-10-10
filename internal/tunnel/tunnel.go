@@ -354,6 +354,7 @@ func (t *Tunnel) handleForward(l net.Listener, f forward) {
 			conn2, err := t.dial(addr.net, addr.addr)
 			if err != nil {
 				log.Errorf("%v: could not dial: %v", t.Name, err)
+				conn1.Close()
 				return
 			}
 			tunnel(conn1, conn2)
