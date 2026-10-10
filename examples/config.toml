@@ -5,7 +5,7 @@ local = "9000"
 remote = "localhost:9000"
 host = "dev-server"       # automatically matches host against SSH config
 
-# simple remote (-R) tunnel; note that we can also use IP{v4,v6} addresses
+# simple remote (-R) tunnel; note the `mode = "remote"`
 [[tunnels]]
 name = "dev-remote"
 local = "[::1]:9000"
@@ -32,6 +32,14 @@ local = "/tmp/serve.sock"
 remote = "/tmp/listen.sock"
 host = "dev-server"
 mode = "remote"
+
+# lists and ranges of ports, paired by position between local and remote;
+# this forwards 8000-8010 to 9000-9010, 8080 to 80 and 8443 to 443
+[[tunnels]]
+name = "dev-ports"
+local = "8000-8010,8080,8443"
+remote = "localhost:9000-9010,80,443"
+host = "dev-server"
 
 # example of a SOCKS5 proxy; this will setup a SOCKS5 server at
 # port 9000 and forward all traffic through `dev-server`.

@@ -207,6 +207,27 @@ func TestOpenBadPort(t *testing.T) {
 	}
 }
 
+// Tests that local and remote must specify the same number of ports
+func TestOpenPortCountMismatch(t *testing.T) {
+	env, cancel, err := makeDefaultEnvWithDaemon(t)
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	defer cancel()
+
+	c, out, err := cliCommand(env, "open", "test-ports-mismatch")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 1 {
+		t.Fatalf("exit code %d, should be 1", c)
+	}
+
+	if !strings.Contains(out, "different numbers of ports") {
+		t.Fatalf("output did not indicate port count mismatch: %s", out)
+	}
+}
+
 func TestOpenNoPattern(t *testing.T) {
 	env, err := makeDefaultEnv(t)
 	if err != nil {
@@ -735,6 +756,50 @@ func TestTunnelRemote(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	testTunnel(t, "localhost:49712", "localhost:49711")
+}
+
+// Test a forward tunnel with lists and ranges of ports
+func TestTunnelPortList(t *testing.T) {
+	env, cancel, err := makeDefaultEnvWithDaemon(t)
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	defer cancel()
+
+	c, out, err := cliCommand(env, "open", "test-ports")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 0 {
+		t.Fatalf("exit code %d: %s", c, out)
+	}
+
+	testTunnel(t, "localhost:49720", "localhost:49730")
+	testTunnel(t, "localhost:49721", "localhost:49731")
+	testTunnel(t, "localhost:49722", "localhost:49732")
+}
+
+// Test a reverse tunnel with lists and ranges of ports
+func TestTunnelPortListRemote(t *testing.T) {
+	env, cancel, err := makeDefaultEnvWithDaemon(t)
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	defer cancel()
+
+	c, out, err := cliCommand(env, "open", "test-ports-remote")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 0 {
+		t.Fatalf("exit code %d: %s", c, out)
+	}
+	// Give the server listeners some time to start
+	time.Sleep(100 * time.Millisecond)
+
+	testTunnel(t, "localhost:49730", "localhost:49720")
+	testTunnel(t, "localhost:49731", "localhost:49721")
+	testTunnel(t, "localhost:49732", "localhost:49722")
 }
 
 func TestOpenManualConfig(t *testing.T) {

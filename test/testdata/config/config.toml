@@ -69,3 +69,22 @@ host = "127.0.0.1"
 port = "notaport"
 local = "localhost:49711"
 remote = "localhost:49712"
+
+[[tunnels]]
+name = "test-ports"
+host = "127.0.0.1"
+local = "49720-49721,49722"
+remote = "localhost:49730-49731,49732"
+
+[[tunnels]]
+name = "test-ports-remote"
+mode = "remote"
+host = "127.0.0.1"
+local = "localhost:49720-49721,49722"
+remote = "49730-49731,49732"
+
+[[tunnels]]
+name = "test-ports-mismatch"
+host = "127.0.0.1"
+local = "49720-49721"
+remote = "localhost:49730"

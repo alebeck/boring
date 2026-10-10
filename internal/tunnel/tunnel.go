@@ -42,16 +42,15 @@ type Desc struct {
 // Tunnel is a representation internal to the tunnel and daemon packages,
 // describing a tunnel that is running or about to be run.
 type Tunnel struct {
-	prepared   bool
-	hops       []ssh_config.Hop
-	Closed     chan struct{}
-	stop       chan struct{}
-	stopOnce   sync.Once
-	listener   net.Listener
-	wg         sync.WaitGroup
-	client     *ssh.Client
-	localAddr  *address
-	remoteAddr *address
+	prepared  bool
+	hops      []ssh_config.Hop
+	Closed    chan struct{}
+	stop      chan struct{}
+	stopOnce  sync.Once
+	listeners []net.Listener
+	wg        sync.WaitGroup
+	client    *ssh.Client
+	fwds      []forward
 	// mu guards Status and LastConn, which the tunnel's own goroutines
 	// update while the daemon may be reading them for a listing.
 	mu sync.Mutex
@@ -60,6 +59,10 @@ type Tunnel struct {
 
 type address struct {
 	addr, net string
+}
+
+type forward struct {
+	local, remote *address
 }
 
 func FromDesc(desc *Desc) *Tunnel {
@@ -78,11 +81,10 @@ func (t *Tunnel) Open() (err error) {
 	}
 	log.Debugf("%v: connected to server", t.Name)
 
-	if err = t.makeListener(); err != nil {
+	if err = t.makeListeners(); err != nil {
 		t.client.Close()
 		return fmt.Errorf("cannot listen: %v", err)
 	}
-	log.Debugf("%v: listening on %v", t.Name, t.listener.Addr())
 
 	if t.stop == nil {
 		t.stop = make(chan struct{})
@@ -147,14 +149,23 @@ func (t *Tunnel) prepare() error {
 	}
 
 	allowShort := t.Mode == Remote || t.Mode == RemoteSocks
-	t.remoteAddr, err = parseAddr(string(t.RemoteAddress), allowShort)
+	remotes, err := parseAddrs(string(t.RemoteAddress), allowShort)
 	if err != nil {
 		return fmt.Errorf("remote address: %v", err)
 	}
 
-	t.localAddr, err = parseAddr(string(t.LocalAddress), !allowShort)
+	locals, err := parseAddrs(string(t.LocalAddress), !allowShort)
 	if err != nil {
 		return fmt.Errorf("local address: %v", err)
+	}
+
+	if len(locals) != len(remotes) {
+		return fmt.Errorf("local and remote have different numbers of ports (%d vs %d)",
+			len(locals), len(remotes))
+	}
+	t.fwds = make([]forward, len(locals))
+	for i := range locals {
+		t.fwds[i] = forward{locals[i], remotes[i]}
 	}
 
 	t.prepared = true
@@ -220,13 +231,35 @@ func wrapClient(old *ssh.Client, addr string, conf *ssh.ClientConfig) (*ssh.Clie
 	return ssh.NewClient(ncc, chans, reqs), nil
 }
 
-func (t *Tunnel) makeListener() (err error) {
-	if t.Mode == Remote || t.Mode == RemoteSocks {
-		t.listener, err = t.client.Listen(t.remoteAddr.net, t.remoteAddr.addr)
-	} else {
-		t.listener, err = net.Listen(t.localAddr.net, t.localAddr.addr)
+// makeListeners listens on one address per forward. If any listen fails,
+// those that succeeded are closed again.
+func (t *Tunnel) makeListeners() error {
+	t.listeners = make([]net.Listener, 0, len(t.fwds))
+	for _, f := range t.fwds {
+		var l net.Listener
+		var err error
+		if t.Mode == Remote || t.Mode == RemoteSocks {
+			l, err = t.client.Listen(f.remote.net, f.remote.addr)
+			if err != nil {
+				err = fmt.Errorf("%v: %v", f.remote.addr, err)
+			}
+		} else {
+			l, err = net.Listen(f.local.net, f.local.addr)
+		}
+		if err != nil {
+			t.closeListeners()
+			return err
+		}
+		log.Debugf("%v: listening on %v", t.Name, l.Addr())
+		t.listeners = append(t.listeners, l)
 	}
-	return
+	return nil
+}
+
+func (t *Tunnel) closeListeners() {
+	for _, l := range t.listeners {
+		l.Close()
+	}
 }
 
 func (t *Tunnel) dial(network, addr string) (net.Conn, error) {
@@ -244,7 +277,9 @@ func (t *Tunnel) run() {
 	}()
 
 	t.goWait(func() { t.keepAlive(disconn) })
-	t.goWait(t.handleConns)
+	for i, l := range t.listeners {
+		t.goWait(func() { t.handleConns(l, t.fwds[i]) })
+	}
 
 	stopped := false
 	select {
@@ -254,7 +289,7 @@ func (t *Tunnel) run() {
 		t.client.Close()
 	case <-disconn:
 	}
-	t.listener.Close()
+	t.closeListeners()
 	t.wg.Wait()
 	if !stopped {
 		if err := t.reconnectLoop(); err != nil {
@@ -294,27 +329,27 @@ func (t *Tunnel) keepAlive(cancel chan struct{}) {
 	}
 }
 
-func (t *Tunnel) handleConns() {
-	defer t.listener.Close()
+func (t *Tunnel) handleConns(l net.Listener, f forward) {
+	defer l.Close()
 	defer t.client.Close()
 	if t.Mode == Local || t.Mode == Remote {
-		t.handleForward()
+		t.handleForward(l, f)
 		return
 	}
-	t.handleSocks()
+	t.handleSocks(l)
 }
 
-func (t *Tunnel) handleForward() {
+func (t *Tunnel) handleForward(l net.Listener, f forward) {
 	for {
-		conn1, err := t.listener.Accept()
+		conn1, err := l.Accept()
 		if err != nil {
 			log.Errorf("%v: could not accept: %v", t.Name, err)
 			return
 		}
 		t.goWait(func() {
-			addr := t.remoteAddr
+			addr := f.remote
 			if t.Mode == Remote || t.Mode == RemoteSocks {
-				addr = t.localAddr
+				addr = f.local
 			}
 			conn2, err := t.dial(addr.net, addr.addr)
 			if err != nil {
@@ -344,14 +379,14 @@ func tunnel(c1, c2 net.Conn) {
 	<-done
 }
 
-func (t *Tunnel) handleSocks() {
+func (t *Tunnel) handleSocks(l net.Listener) {
 	serv := &proxy.Server{
 		Dialer: func(ctx context.Context, netw, addr string) (net.Conn, error) {
 			return t.dial(netw, addr)
 		},
 	}
 	for {
-		conn, err := t.listener.Accept()
+		conn, err := l.Accept()
 		if err != nil {
 			log.Errorf("%v: could not accept: %v", t.Name, err)
 			return
@@ -413,19 +448,49 @@ func (t *Tunnel) goWait(f func()) {
 	}()
 }
 
-func parseAddr(addr string, allowShort bool) (*address, error) {
-	if _, err := strconv.Atoi(addr); err == nil {
-		// addr is a tcp port number
-		if !allowShort {
-			return nil, fmt.Errorf("bad remote forwarding specification")
+// parseAddrs parses an address whose port may be a list of ports and
+// ranges, e.g. "localhost:8000-8010,8080", into one address per port.
+func parseAddrs(addr string, allowShort bool) ([]*address, error) {
+	host, spec := "localhost", addr
+	if strings.Trim(addr, "0123456789,-") != "" {
+		i := strings.LastIndex(addr, ":")
+		if i < 0 {
+			// it's a unix socket address
+			return []*address{{addr, "unix"}}, nil
 		}
-		return &address{"localhost:" + addr, "tcp"}, nil
-	} else if strings.Contains(addr, ":") {
-		// addr is a full tcp address
-		return &address{addr, "tcp"}, nil
+		host, spec = addr[:i], addr[i+1:]
+	} else if !allowShort {
+		return nil, fmt.Errorf("bad remote forwarding specification")
 	}
-	// it's a unix socket address
-	return &address{addr, "unix"}, nil
+	ports, err := parsePorts(spec)
+	if err != nil {
+		return nil, err
+	}
+	addrs := make([]*address, len(ports))
+	for i, p := range ports {
+		addrs[i] = &address{host + ":" + p, "tcp"}
+	}
+	return addrs, nil
+}
+
+// parsePorts expands a list of ports and ranges like "8000-8010,8080".
+func parsePorts(spec string) ([]string, error) {
+	var ports []string
+	for item := range strings.SplitSeq(spec, ",") {
+		a, b, isRange := strings.Cut(item, "-")
+		if !isRange {
+			b = a
+		}
+		lo, err1 := strconv.Atoi(a)
+		hi, err2 := strconv.Atoi(b)
+		if err1 != nil || err2 != nil || lo < 1 || hi > 65535 || lo > hi {
+			return nil, fmt.Errorf("invalid port %q", item)
+		}
+		for p := lo; p <= hi; p++ {
+			ports = append(ports, strconv.Itoa(p))
+		}
+	}
+	return ports, nil
 }
 
 func safeClose(c *ssh.Client) {

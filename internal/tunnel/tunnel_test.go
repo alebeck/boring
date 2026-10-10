@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"reflect"
 	"sync"
 	"testing"
 )
@@ -70,4 +71,51 @@ func TestSnapshotConcurrent(t *testing.T) {
 		}
 	}
 	wg.Wait()
+}
+
+func TestParseAddrs(t *testing.T) {
+	tests := []struct {
+		addr       string
+		allowShort bool
+		want       []address // nil means an error is expected
+	}{
+		{"9000", true, []address{{"localhost:9000", "tcp"}}},
+		{"localhost:9000", false, []address{{"localhost:9000", "tcp"}}},
+		{"[::1]:9000", false, []address{{"[::1]:9000", "tcp"}}},
+		{"/tmp/x.sock", false, []address{{"/tmp/x.sock", "unix"}}},
+		{"8000-8002,443", true, []address{
+			{"localhost:8000", "tcp"}, {"localhost:8001", "tcp"},
+			{"localhost:8002", "tcp"}, {"localhost:443", "tcp"},
+		}},
+		{"db:5432,6000-6001", false, []address{
+			{"db:5432", "tcp"}, {"db:6000", "tcp"}, {"db:6001", "tcp"},
+		}},
+		{"9000", false, nil},
+		{"8000-8001", false, nil},
+		{"localhost:0", false, nil},
+		{"localhost:65536", false, nil},
+		{"localhost:9002-9000", false, nil},
+		{"localhost:80,", false, nil},
+		{"localhost:http", false, nil},
+	}
+	for _, tt := range tests {
+		got, err := parseAddrs(tt.addr, tt.allowShort)
+		if tt.want == nil {
+			if err == nil {
+				t.Errorf("%q: expected error", tt.addr)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%q: %v", tt.addr, err)
+			continue
+		}
+		var vals []address
+		for _, a := range got {
+			vals = append(vals, *a)
+		}
+		if !reflect.DeepEqual(vals, tt.want) {
+			t.Errorf("%q: got %v, want %v", tt.addr, vals, tt.want)
+		}
+	}
 }
