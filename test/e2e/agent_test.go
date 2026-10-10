@@ -83,3 +83,32 @@ func TestAgentIdsOnly(t *testing.T) {
 		t.Fatalf("exit code %d: %s", c, out)
 	}
 }
+
+// The server requires a certificate for this user, and the certificate is
+// only available through the agent. With IdentitiesOnly and just the public
+// key configured, boring has to pick the agent's certificate identity.
+func TestAgentCertIdsOnly(t *testing.T) {
+	cfg := defaultConfig
+	cfg.sshConfig = "../testdata/config/ssh_config_agent_cert"
+	cfg.useAgent = true
+	env, cancel, err := makeEnvWithDaemon(cfg, t)
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	defer cancel()
+
+	cancel, err = startAgentWithCert(getEnv(env, "SSH_AUTH_SOCK"), "../testdata/keys/cert.pub")
+	if err != nil {
+		t.Fatalf("could not start agent: %v", err)
+	}
+	defer cancel()
+
+	c, out, err := cliCommand(env, "open", "test")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if c != 0 {
+		t.Fatalf("exit code %d: %s", c, out)
+	}
+	testTunnel(t, "localhost:49711", "localhost:49712")
+}

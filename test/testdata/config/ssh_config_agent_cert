@@ -1,0 +1,7 @@
+Host *
+    User needs-cert
+    Port 58391
+    # Only the public key is configured, the certificate lives in the agent
+    IdentityFile ../testdata/keys/client.pub
+    IdentitiesOnly yes
+    UserKnownHostsFile ../testdata/known_hosts/known_hosts

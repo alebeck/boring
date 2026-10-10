@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"net"
@@ -14,6 +15,12 @@ const (
 )
 
 func startAgent(sock string) (context.CancelFunc, error) {
+	return startAgentWithCert(sock, "")
+}
+
+// startAgentWithCert starts an agent holding the client key. If certFile is
+// set, the key is added together with that certificate.
+func startAgentWithCert(sock, certFile string) (context.CancelFunc, error) {
 	// Read and parse the private key
 	keyBytes, err := os.ReadFile(clientKeyFile)
 	if err != nil {
@@ -24,12 +31,29 @@ func startAgent(sock string) (context.CancelFunc, error) {
 		return nil, err
 	}
 
-	// Create agent and add the key
-	kr := agent.NewKeyring()
-	if err := kr.Add(agent.AddedKey{
+	key := agent.AddedKey{
 		PrivateKey: signer,
 		Comment:    filepath.Base(clientKeyFile),
-	}); err != nil {
+	}
+	if certFile != "" {
+		certBytes, err := os.ReadFile(certFile)
+		if err != nil {
+			return nil, err
+		}
+		pub, _, _, _, err := ssh.ParseAuthorizedKey(certBytes)
+		if err != nil {
+			return nil, err
+		}
+		cert, ok := pub.(*ssh.Certificate)
+		if !ok {
+			return nil, fmt.Errorf("%s is not a certificate", certFile)
+		}
+		key.Certificate = cert
+	}
+
+	// Create agent and add the key
+	kr := agent.NewKeyring()
+	if err := kr.Add(key); err != nil {
 		return nil, err
 	}
 
