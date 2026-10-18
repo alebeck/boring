@@ -1,0 +1,11 @@
+Host testhost
+    HostName real.example.com
+
+Match host *.example.com
+    Port 1111
+
+Host template
+    HostName %h.example.com
+
+Match host template.example.com
+    Port 2222

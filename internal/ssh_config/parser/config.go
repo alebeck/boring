@@ -225,7 +225,10 @@ func (m matchCriteria) matches(ctx *matchContext) bool {
 		var v string
 		switch k {
 		case "host":
-			v = ctx.host
+			// Like ssh(1), fall back to the alias if no HostName is set
+			if v = ctx.host; v == "" {
+				v = ctx.originalHost
+			}
 		case "user":
 			// Like ssh(1), fall back to the local user if none is set
 			if v = ctx.user; v == "" {
@@ -271,7 +274,7 @@ type matchContext struct {
 }
 
 func newMatchContext(alias, user string) *matchContext {
-	ctx := &matchContext{user: user, host: alias, originalHost: alias}
+	ctx := &matchContext{user: user, originalHost: alias}
 	if u, err := osuser.Current(); err == nil {
 		ctx.localUser = u.Username
 	}
@@ -284,7 +287,8 @@ func (ctx *matchContext) update(key, val string) {
 	case key == "user" && ctx.user == "":
 		ctx.user = val
 	case key == "hostname" && ctx.host == "":
-		ctx.host = val
+		// HostName may refer to the alias as %h
+		ctx.host = strings.NewReplacer("%%", "%", "%h", ctx.originalHost).Replace(val)
 	}
 }
 
