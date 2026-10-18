@@ -120,7 +120,7 @@ func (t *Tunnel) prepare() error {
 	var port int
 	if t.Port != "" {
 		var err error
-		if port, err = strconv.Atoi(t.Port.String()); err != nil {
+		if port, err = strconv.Atoi(t.Port.String()); err != nil || port < 1 {
 			return fmt.Errorf("invalid port %q", t.Port)
 		}
 	}

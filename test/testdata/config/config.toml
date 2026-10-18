@@ -71,6 +71,13 @@ local = "localhost:49711"
 remote = "localhost:49712"
 
 [[tunnels]]
+name = "test-zero-port"
+host = "127.0.0.1"
+port = 0
+local = "localhost:49711"
+remote = "localhost:49712"
+
+[[tunnels]]
 name = "test-ports"
 host = "127.0.0.1"
 local = "49720-49721,49722"

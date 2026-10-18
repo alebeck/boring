@@ -186,7 +186,7 @@ func TestOpenBadRemoteConfig(t *testing.T) {
 	}
 }
 
-// Tests that a non-numeric port is rejected when opening
+// Tests that a non-numeric or zero port is rejected when opening
 func TestOpenBadPort(t *testing.T) {
 	env, cancel, err := makeDefaultEnvWithDaemon(t)
 	if err != nil {
@@ -194,16 +194,17 @@ func TestOpenBadPort(t *testing.T) {
 	}
 	defer cancel()
 
-	c, out, err := cliCommand(env, "open", "test-bad-port")
-	if err != nil {
-		t.Fatalf("failed to run CLI command: %v", err)
-	}
-	if c != 1 {
-		t.Fatalf("exit code %d, should be 1", c)
-	}
-
-	if !strings.Contains(out, "invalid port") {
-		t.Fatalf("output did not indicate invalid port: %s", out)
+	for _, name := range []string{"test-bad-port", "test-zero-port"} {
+		c, out, err := cliCommand(env, "open", name)
+		if err != nil {
+			t.Fatalf("failed to run CLI command: %v", err)
+		}
+		if c != 1 {
+			t.Fatalf("%s: exit code %d, should be 1", name, c)
+		}
+		if !strings.Contains(out, "invalid port") {
+			t.Fatalf("%s: output did not indicate invalid port: %s", name, out)
+		}
 	}
 }
 
