@@ -75,7 +75,8 @@ func TestGetAll(t *testing.T) {
 	}{
 		{"identities", "hasidentity", "IdentityFile", []string{"file1"}},
 		{"identities", "has2identity", "IdentityFile", []string{"f1", "f2"}},
-		{"identities", "randomhost", "IdentityFile", defaultIdentities},
+		{"identities", "randomhost", "IdentityFile", []string{"~/.ssh/id_rsa", "~/.ssh/id_ecdsa",
+			"~/.ssh/id_ecdsa_sk", "~/.ssh/id_ed25519", "~/.ssh/id_ed25519_sk"}},
 		{"match-user-first", "testhost", "IdentityFile", []string{"a", "b"}},
 		{"config1", "wap", "UserKnownHostsFile", []string{"~/.ssh/known_hosts ~/.ssh/known_hosts2"}},
 		{"config1", "wap", "CanonicalDomains", nil},
@@ -87,19 +88,28 @@ func TestGetAll(t *testing.T) {
 	}
 }
 
-func TestDOSLineEndings(t *testing.T) {
+func TestWhitespace(t *testing.T) {
 	cfg := filepath.Join(t.TempDir(), "config")
-	writeFile(t, cfg, "# comment\r\nHost wap\r\n  HostName wap.example.org\t\r\n\r\nHost wap2\r\n  User testuser\t\r\n")
+	writeFile(t, cfg, "# comment\r\n"+
+		"Host wap\r\n  HostName wap.example.org\t\r\n\r\n"+
+		"Host wap1\twap2\r\n  User testuser\t\r\n\r\n"+
+		"Match user  alice\r\n  Port 2222\r\n")
 
 	s, err := Load(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := s.Get("wap", "HostName", ""); got != "wap.example.org" {
-		t.Errorf("HostName = %q, want %q", got, "wap.example.org")
+	tests := []struct {
+		alias, user, key, want string
+	}{
+		{"wap", "", "HostName", "wap.example.org"},
+		{"wap2", "", "User", "testuser"},
+		{"other", "alice", "Port", "2222"},
 	}
-	if got := s.Get("wap2", "User", ""); got != "testuser" {
-		t.Errorf("User = %q, want %q", got, "testuser")
+	for _, tt := range tests {
+		if got := s.Get(tt.alias, tt.key, tt.user); got != tt.want {
+			t.Errorf("Get(%q, %q, %q) = %q, want %q", tt.alias, tt.key, tt.user, got, tt.want)
+		}
 	}
 }
 
@@ -140,17 +150,28 @@ func TestInclude(t *testing.T) {
 	writeFile(t, filepath.Join(home, "tilde"), "Host tilde\n  Port 2222\n")
 	abs := filepath.Join(home, "absolute")
 	writeFile(t, abs, "Host absolute\n  Port 3333\n")
+	writeFile(t, filepath.Join(home, ".ssh", "conf.d", "a"), "Host glob\n  Port 4444\n  IdentityFile a\n")
+	writeFile(t, filepath.Join(home, ".ssh", "conf.d", "b"), "Host glob\n  Port 5555\n  IdentityFile b\n")
+	writeFile(t, filepath.Join(home, ".ssh", "final"), "Port 6666\n")
 	cfg := filepath.Join(home, "config")
-	writeFile(t, cfg, "Include relative ~/tilde "+abs+"\n")
+	writeFile(t, cfg, "Include relative ~/tilde "+abs+" conf.d/*  # comment\n"+
+		"Match final all\n  Include final\n")
 
 	s, err := Load(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for alias, want := range map[string]string{"relative": "1111", "tilde": "2222", "absolute": "3333"} {
+	ports := map[string]string{
+		"relative": "1111", "tilde": "2222", "absolute": "3333",
+		"glob": "4444", "other": "6666",
+	}
+	for alias, want := range ports {
 		if got := s.Get(alias, "Port", ""); got != want {
 			t.Errorf("Get(%q, Port) = %q, want %q", alias, got, want)
 		}
+	}
+	if got := s.GetAll("glob", "IdentityFile", ""); !slices.Equal(got, []string{"a", "b"}) {
+		t.Errorf("GetAll(glob, IdentityFile) = %q, want [a b]", got)
 	}
 }
 
@@ -159,5 +180,20 @@ func TestIncludeRecursive(t *testing.T) {
 	writeFile(t, cfg, "Include "+cfg+"\n")
 	if _, err := Load(cfg); !errors.Is(err, errDepthExceeded) {
 		t.Errorf("expected errDepthExceeded, got %v", err)
+	}
+}
+
+func TestParseErrors(t *testing.T) {
+	for _, content := range []string{
+		"Match\n",
+		"Match exec true\n",
+		"Match user\n",
+		"Match host a all\n",
+	} {
+		cfg := filepath.Join(t.TempDir(), "config")
+		writeFile(t, cfg, content)
+		if _, err := Load(cfg); err == nil {
+			t.Errorf("Load(%q): expected error", content)
+		}
 	}
 }
