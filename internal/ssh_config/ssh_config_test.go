@@ -138,7 +138,7 @@ func TestParseSSHConfigDefaultPort(t *testing.T) {
 	overrideConfig = cfg
 	t.Cleanup(func() { overrideConfig = old })
 
-	sc, err := ParseSSHConfig("myhost", "bob")
+	sc, err := ParseSSHConfig("myhost", "bob", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,14 +155,16 @@ func TestParseSSHConfigTokens(t *testing.T) {
 	}
 	tests := []struct {
 		config, user string
+		port         int
 		got          func(*SSHConfig) string
 		want         string
 	}{
-		{"HostName example.com\nProxyJump %h\n", "", func(sc *SSHConfig) string { return sc.Jumps[0].host }, "example.com"},
-		{"User bob\nCertificateFile %r-cert.pub\n", "", func(sc *SSHConfig) string { return sc.CertificateFiles[0] }, "bob-cert.pub"},
-		{"IdentityFile %%h\n", "", func(sc *SSHConfig) string { return sc.IdentityFiles[0] }, "%h"},
-		{"User bob\nIdentityFile %r\n", "alice", func(sc *SSHConfig) string { return sc.IdentityFiles[0] }, "alice"},
-		{"IdentityFile %r\n", "", func(sc *SSHConfig) string { return sc.IdentityFiles[0] }, local.Username},
+		{"HostName example.com\nProxyJump %h\n", "", 0, func(sc *SSHConfig) string { return sc.Jumps[0].host }, "example.com"},
+		{"User bob\nCertificateFile %r-cert.pub\n", "", 0, func(sc *SSHConfig) string { return sc.CertificateFiles[0] }, "bob-cert.pub"},
+		{"IdentityFile %%h\n", "", 0, func(sc *SSHConfig) string { return sc.IdentityFiles[0] }, "%h"},
+		{"User bob\nIdentityFile %r\n", "alice", 0, func(sc *SSHConfig) string { return sc.IdentityFiles[0] }, "alice"},
+		{"IdentityFile %r\n", "", 0, func(sc *SSHConfig) string { return sc.IdentityFiles[0] }, local.Username},
+		{"Port 2222\nIdentityFile %p\n", "", 3333, func(sc *SSHConfig) string { return sc.IdentityFiles[0] }, "3333"},
 	}
 
 	old := overrideConfig
@@ -172,7 +174,7 @@ func TestParseSSHConfigTokens(t *testing.T) {
 		if err := os.WriteFile(overrideConfig, []byte(tt.config), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		sc, err := ParseSSHConfig("alias", tt.user)
+		sc, err := ParseSSHConfig("alias", tt.user, tt.port)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -70,7 +70,7 @@ var (
 	}
 )
 
-func ParseSSHConfig(alias, user string) (*SSHConfig, error) {
+func ParseSSHConfig(alias, user string, port int) (*SSHConfig, error) {
 	// We load the config files at each connection so that config file changes
 	// are reflected immediately.
 	settings, err := parser.Load(overrideConfig)
@@ -89,7 +89,7 @@ func ParseSSHConfig(alias, user string) (*SSHConfig, error) {
 		sub["%h"] = c.HostName
 	}
 
-	// Like ssh(1), a given user takes precedence over the config
+	// Like ssh(1), a given user and port take precedence over the config
 	c.User = get("User")
 	if user != "" {
 		c.User = user
@@ -97,6 +97,9 @@ func ParseSSHConfig(alias, user string) (*SSHConfig, error) {
 	c.ensureUser()
 	sub["%r"] = c.User
 	c.Port, _ = strconv.Atoi(get("Port"))
+	if port != 0 {
+		c.Port = port
+	}
 	sub["%p"] = fmt.Sprintf("%d", c.Port)
 
 	s := get("StrictHostKeyChecking")
@@ -162,14 +165,9 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 
 	var hops []Hop
 	for i, j := range sc.Jumps {
-		jc, err := ParseSSHConfig(j.host, j.user)
+		jc, err := ParseSSHConfig(j.host, j.user, j.port)
 		if err != nil {
 			return nil, fmt.Errorf("could not parse SSH config for %v: %v", j.host, err)
-		}
-
-		// Replace jump port if provided inline
-		if j.port != 0 {
-			jc.Port = j.port
 		}
 
 		// If hostname could not be resolved from ssh config, take it literally

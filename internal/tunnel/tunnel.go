@@ -117,18 +117,22 @@ func (t *Tunnel) setStatus(s Status) {
 }
 
 func (t *Tunnel) prepare() error {
-	// The user is needed for matching Match blocks and overrides the config
-	sc, err := ssh_config.ParseSSHConfig(t.Host, t.User)
+	var port int
+	if t.Port != "" {
+		var err error
+		if port, err = strconv.Atoi(t.Port.String()); err != nil {
+			return fmt.Errorf("invalid port %q", t.Port)
+		}
+	}
+
+	// User and port override the config, the user is also needed for
+	// matching Match blocks
+	sc, err := ssh_config.ParseSSHConfig(t.Host, t.User, port)
 	if err != nil {
 		return fmt.Errorf("could not parse SSH config: %v", err)
 	}
 
 	// Override values manually set by user
-	if t.Port != "" {
-		if sc.Port, err = strconv.Atoi(t.Port.String()); err != nil {
-			return fmt.Errorf("invalid port %q", t.Port)
-		}
-	}
 	if t.IdentityFile != "" {
 		sc.IdentityFiles = []string{t.IdentityFile}
 	}
