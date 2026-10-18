@@ -31,12 +31,14 @@ func (s subst) apply(str string, keys []string) string {
 	if !strings.Contains(str, "%") {
 		return str
 	}
+	var oldnew []string
 	for _, k := range keys {
 		if r, ok := s[k]; ok {
-			str = strings.ReplaceAll(str, k, r)
+			oldnew = append(oldnew, k, r)
 		}
 	}
-	return str
+	// Replace in a single pass, so that e.g. "%%h" becomes a literal "%h"
+	return strings.NewReplacer(oldnew...).Replace(str)
 }
 
 func (s subst) applyAll(strs []string, keys []string) []string {

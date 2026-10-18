@@ -155,6 +155,7 @@ func TestParseSSHConfigTokens(t *testing.T) {
 	}{
 		{"HostName example.com\nProxyJump %h\n", "", func(sc *SSHConfig) string { return sc.Jumps[0].host }, "example.com"},
 		{"User bob\nCertificateFile %r-cert.pub\n", "", func(sc *SSHConfig) string { return sc.CertificateFiles[0] }, "bob-cert.pub"},
+		{"IdentityFile %%h\n", "", func(sc *SSHConfig) string { return sc.IdentityFiles[0] }, "%h"},
 	}
 
 	old := overrideConfig
