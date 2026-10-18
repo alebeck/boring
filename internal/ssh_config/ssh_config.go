@@ -63,7 +63,7 @@ type SSHConfig struct {
 
 var (
 	hostnameTokens  = []string{"%%", "%h"}
-	proxyTokens     = []string{"%%", "h", "%n", "%p", "%r"}
+	proxyTokens     = []string{"%%", "%h", "%n", "%p", "%r"}
 	identFileTokens = []string{
 		"%%", "%d", "%h", "%i", "%j", "%k",
 		"%L", "%l", "%n", "%p", "%r", "%u",

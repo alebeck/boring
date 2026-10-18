@@ -145,3 +145,30 @@ func TestParseSSHConfigDefaultPort(t *testing.T) {
 		t.Errorf("Port = %d, want 22", sc.Port)
 	}
 }
+
+// Tokens in values must be expanded like ssh(1) does
+func TestParseSSHConfigTokens(t *testing.T) {
+	tests := []struct {
+		config, user string
+		got          func(*SSHConfig) string
+		want         string
+	}{
+		{"HostName example.com\nProxyJump %h\n", "", func(sc *SSHConfig) string { return sc.Jumps[0].host }, "example.com"},
+	}
+
+	old := overrideConfig
+	t.Cleanup(func() { overrideConfig = old })
+	for _, tt := range tests {
+		overrideConfig = filepath.Join(t.TempDir(), "config")
+		if err := os.WriteFile(overrideConfig, []byte(tt.config), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		sc, err := ParseSSHConfig("alias", tt.user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := tt.got(sc); got != tt.want {
+			t.Errorf("%q: got %q, want %q", tt.config, got, tt.want)
+		}
+	}
+}
