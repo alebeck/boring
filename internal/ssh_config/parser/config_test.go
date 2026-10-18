@@ -54,6 +54,7 @@ func TestGet(t *testing.T) {
 		{"match-directive", "wronghost", "", "HostName", ""},
 		{"match-user", "testhost", "testuser", "HostName", "hostname"},
 		{"match-user-first", "testhost", "", "Port", "1111"},
+		{"match-local-user", "testhost", "", "Port", "1111"},
 		{"match-final", "testhost", "", "Port", "4567"},
 		{"match-final", "testhost2", "", "Port", "1234"},
 		{"match-final", "testhost3", "", "Port", "3333"},

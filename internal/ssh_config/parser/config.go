@@ -227,7 +227,10 @@ func (m matchCriteria) matches(ctx *matchContext) bool {
 		case "host":
 			v = ctx.host
 		case "user":
-			v = ctx.user
+			// Like ssh(1), fall back to the local user if none is set
+			if v = ctx.user; v == "" {
+				v = ctx.localUser
+			}
 		case "originalhost":
 			v = ctx.originalHost
 		case "localuser":
