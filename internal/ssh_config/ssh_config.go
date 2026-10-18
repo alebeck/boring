@@ -125,7 +125,7 @@ func ParseSSHConfig(alias, user string) (*SSHConfig, error) {
 
 	c.IdentitiesOnly = get("IdentitiesOnly") == "yes"
 	c.IdentityFiles = sub.applyAll(getAll("IdentityFile"), identFileTokens)
-	c.CertificateFiles = getAll("CertificateFile")
+	c.CertificateFiles = sub.applyAll(getAll("CertificateFile"), identFileTokens)
 
 	// Known hosts
 	hosts := getAll("GlobalKnownHostsFile")
