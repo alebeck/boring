@@ -1,0 +1,15 @@
+Match final user testuser3
+	Port 3333
+
+Match final all
+	Port 4567
+
+Host testhost
+	User testuser
+
+Host testhost2
+	User testuser
+	Port 1234
+
+Host testhost3
+	User testuser3

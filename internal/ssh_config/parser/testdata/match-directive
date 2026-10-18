@@ -1,0 +1,8 @@
+Match all
+	Port 4567
+
+Host testhost
+	User testuser
+
+Match user testuser OriginalHost testhost
+    HostName hostname

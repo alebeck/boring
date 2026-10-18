@@ -22,7 +22,7 @@ SOFTWARE.
 
 =============================================================================
 
-This project uses the github.com/kevinburke/ssh_config package to parse 
+This project includes code adapted from github.com/kevinburke/ssh_config to parse
 SSH config files. Its license text is as follows:
 
 Copyright (c) 2017 Kevin Burke.

@@ -1,0 +1,15 @@
+Host testhost
+    User testuser
+    IdentityFile a
+
+Host testhost
+    User testuser2
+
+# this should match
+Match user testuser
+    Port 1111
+    IdentityFile b
+
+# this not
+Match user testuser2
+    Port 4444

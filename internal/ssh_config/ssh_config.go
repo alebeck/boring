@@ -12,7 +12,7 @@ import (
 	"github.com/alebeck/boring/internal/agent"
 	"github.com/alebeck/boring/internal/log"
 	"github.com/alebeck/boring/internal/paths"
-	ossh_config "github.com/alebeck/ssh_config"
+	"github.com/alebeck/boring/internal/ssh_config/parser"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
@@ -71,21 +71,16 @@ var (
 )
 
 func ParseSSHConfig(alias, user string) (*SSHConfig, error) {
-	// We create a new ssh_config.UserSettings object at each connection so that
-	// config file changes are reflected immediately.
-	us := ossh_config.MakeDefaultUserSettings()
-	if overrideConfig != "" {
-		us.ConfigFinder(func() string { return overrideConfig })
-	}
-
-	// This is a "strict" dummy query to catch potential parsing errors early
-	if _, err := us.GetStrict(alias, "HostName", ""); err != nil {
+	// We load the config files at each connection so that config file changes
+	// are reflected immediately.
+	settings, err := parser.Load(overrideConfig)
+	if err != nil {
 		return nil, err
 	}
 
 	// In the following, we always provide `user` since it is needed for `Match` matching
-	get := func(key string) string { return us.Get(alias, key, user) }
-	getAll := func(key string) []string { return us.GetAll(alias, key, user) }
+	get := func(key string) string { return settings.Get(alias, key, user) }
+	getAll := func(key string) []string { return settings.GetAll(alias, key, user) }
 
 	c := &SSHConfig{Alias: alias}
 	sub := makeSubst(alias)

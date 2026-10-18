@@ -1,0 +1,6 @@
+Host testhost
+    # this should not match as user should be set from the caller
+    User dummy
+
+Match host testhost user testuser
+    HostName hostname
