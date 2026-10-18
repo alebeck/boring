@@ -5,7 +5,3 @@ Host hasidentity
 Host has2identity
   IdentityFile f1
   IdentityFile f2
-
-Host protocol1
-  Protocol 1
-

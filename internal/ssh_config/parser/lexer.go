@@ -5,7 +5,6 @@ import (
 	"fmt"
 )
 
-// Define state functions
 type sshLexStateFn func() sshLexStateFn
 
 type sshLexer struct {
@@ -36,7 +35,7 @@ func (s *sshLexer) lexComment(previousState sshLexStateFn) sshLexStateFn {
 	}
 }
 
-// lex the space after an equals sign in a function
+// lex the space after an equals sign
 func (s *sshLexer) lexRspace() sshLexStateFn {
 	for {
 		next := s.peek()
@@ -56,7 +55,6 @@ func (s *sshLexer) lexEquals() sshLexStateFn {
 			s.skip()
 			return s.lexRspace
 		}
-		// TODO error handling here; newline eof etc.
 		if !isSpace(next) {
 			break
 		}
@@ -69,7 +67,6 @@ func (s *sshLexer) lexKey() sshLexStateFn {
 	growingString := ""
 
 	for r := s.peek(); isKeyChar(r); r = s.peek() {
-		// simplified a lot here
 		if isSpace(r) || r == '=' {
 			s.emitWithValue(tokenKey, growingString)
 			s.skip()
@@ -157,8 +154,6 @@ func (s *sshLexer) lexVoid() sshLexStateFn {
 		if isKeyStartChar(next) {
 			return s.lexKey
 		}
-
-		// removed IsKeyStartChar and lexKey. probably will need to readd
 
 		if next == eof {
 			s.next()
@@ -278,10 +273,6 @@ func isKeyStartChar(r rune) bool {
 	return !(isSpace(r) || r == '\r' || r == '\n' || r == eof)
 }
 
-// I'm not sure that this is correct
 func isKeyChar(r rune) bool {
-	// Keys start with the first character that isn't whitespace or [ and end
-	// with the last non-whitespace character before the equals sign. Keys
-	// cannot contain a # character."
 	return !(r == '\r' || r == '\n' || r == eof || r == '=')
 }

@@ -13,7 +13,8 @@ import (
 	"github.com/alebeck/boring/internal/paths"
 )
 
-// modifiableKeys may be prefixed with "+", "-" or "^" to modify their defaults
+// modifiableKeys are keys whose values may be prefixed with "+", "-" or "^"
+// to modify their defaults
 var modifiableKeys = []string{"ciphers", "macs", "hostkeyalgorithms", "kexalgorithms"}
 
 // Settings holds parsed SSH config files in order of precedence
@@ -246,9 +247,11 @@ type pattern struct {
 	not   bool
 }
 
+// wildcards turns the quoted pattern wildcards into their regex equivalents
+var wildcards = strings.NewReplacer(`\*`, ".*", `\?`, ".?")
+
 func newPattern(s string) pattern {
-	expr := regexp.QuoteMeta(strings.TrimPrefix(s, "!"))
-	expr = strings.NewReplacer(`\*`, ".*", `\?`, ".?").Replace(expr)
+	expr := wildcards.Replace(regexp.QuoteMeta(strings.TrimPrefix(s, "!")))
 	return pattern{
 		regex: regexp.MustCompile("^" + expr + "$"),
 		not:   strings.HasPrefix(s, "!"),
@@ -274,9 +277,6 @@ func newMatchContext(alias, user string) *matchContext {
 
 // update records user and host names set by matching blocks
 func (ctx *matchContext) update(key, val string) {
-	if ctx == nil {
-		return
-	}
 	switch {
 	case key == "user" && ctx.user == "":
 		ctx.user = val
@@ -288,7 +288,7 @@ func (ctx *matchContext) update(key, val string) {
 func (ctx *matchContext) matchFinal(key string) string {
 	for _, b := range ctx.finalBlocks {
 		if b.matches(ctx) {
-			if val := b.get(key, nil); val != "" {
+			if val := b.get(key, ctx); val != "" {
 				return val
 			}
 		}
@@ -299,7 +299,7 @@ func (ctx *matchContext) matchFinal(key string) string {
 func (ctx *matchContext) matchFinalAll(key string) (vals []string) {
 	for _, b := range ctx.finalBlocks {
 		if b.matches(ctx) {
-			vals = append(vals, b.getAll(key, nil)...)
+			vals = append(vals, b.getAll(key, ctx)...)
 		}
 	}
 	return vals

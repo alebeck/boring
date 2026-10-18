@@ -19,7 +19,6 @@ const maxIncludeDepth = 5
 // which usually indicates an Include loop
 var errDepthExceeded = errors.New("ssh_config: max recurse depth exceeded")
 
-// TODO extend this by at least "localnetwork"
 var allowedMatchKeywords = []string{"host", "originalhost", "user", "localuser"}
 
 type sshParser struct {
@@ -102,7 +101,7 @@ func (p *sshParser) parseKV(key *token) {
 	switch lkey := strings.ToLower(key.val); lkey {
 	case "host":
 		var patterns hostPatterns
-		for s := range strings.FieldsSeq(val.val) {
+		for s := range strings.FieldsFuncSeq(val.val, isSpace) {
 			patterns = append(patterns, newPattern(s))
 		}
 		p.blocks = append(p.blocks, &block{matcher: patterns})
@@ -127,7 +126,10 @@ func (p *sshParser) addNode(n any) {
 func (p *sshParser) parseMatch(val *token) *block {
 	b := &block{}
 	criteria := matchCriteria{}
-	args := strings.Fields(strings.ToLower(val.val))
+	args := strings.FieldsFunc(strings.ToLower(val.val), isSpace)
+	if len(args) == 0 {
+		p.raiseErrorf(val, "No criteria found after Match")
+	}
 	for i := 0; i < len(args); i++ {
 		switch k := args[i]; k {
 		case "canonical":
@@ -162,7 +164,7 @@ func (p *sshParser) parseInclude(val *token) include {
 	}
 	var inc include
 	seen := map[string]bool{}
-	for d := range strings.FieldsSeq(val.val) {
+	for d := range strings.FieldsFuncSeq(val.val, isSpace) {
 		matches, err := filepath.Glob(p.includePath(d))
 		if err != nil {
 			p.raiseErrorf(val, "Error parsing Include directive: %v", err)

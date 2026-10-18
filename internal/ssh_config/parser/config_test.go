@@ -48,6 +48,7 @@ func TestGet(t *testing.T) {
 		{"eqsign", "test.test", "", "Port2", "5678"},
 		{"quoted-identities", "hasquotedidentity", "", "IdentityFile", "/Users/testuser/.ssh/quoted_key"},
 		{"quoted-identities", "hasunquotedidentity", "", "IdentityFile", "/Users/testuser/.ssh/unquoted_key"},
+		{"quoted-identities", "hasquotedhostname", "", "HostName", "example.com"},
 		{"match-directive", "testhost", "", "Port", "4567"},
 		{"match-directive", "testhost", "", "HostName", "hostname"},
 		{"match-directive", "wronghost", "", "HostName", ""},

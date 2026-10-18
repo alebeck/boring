@@ -1,4 +1,3 @@
 Host=test.test
   Port =1234
   Port2= 5678
-  Compression yes
