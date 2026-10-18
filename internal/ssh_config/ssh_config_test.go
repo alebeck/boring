@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/pem"
 	"os"
+	"os/user"
 	"path/filepath"
 	"testing"
 
@@ -148,6 +149,10 @@ func TestParseSSHConfigDefaultPort(t *testing.T) {
 
 // Tokens in values must be expanded like ssh(1) does
 func TestParseSSHConfigTokens(t *testing.T) {
+	local, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
 	tests := []struct {
 		config, user string
 		got          func(*SSHConfig) string
@@ -156,6 +161,8 @@ func TestParseSSHConfigTokens(t *testing.T) {
 		{"HostName example.com\nProxyJump %h\n", "", func(sc *SSHConfig) string { return sc.Jumps[0].host }, "example.com"},
 		{"User bob\nCertificateFile %r-cert.pub\n", "", func(sc *SSHConfig) string { return sc.CertificateFiles[0] }, "bob-cert.pub"},
 		{"IdentityFile %%h\n", "", func(sc *SSHConfig) string { return sc.IdentityFiles[0] }, "%h"},
+		{"User bob\nIdentityFile %r\n", "alice", func(sc *SSHConfig) string { return sc.IdentityFiles[0] }, "alice"},
+		{"IdentityFile %r\n", "", func(sc *SSHConfig) string { return sc.IdentityFiles[0] }, local.Username},
 	}
 
 	old := overrideConfig

@@ -89,7 +89,12 @@ func ParseSSHConfig(alias, user string) (*SSHConfig, error) {
 		sub["%h"] = c.HostName
 	}
 
+	// Like ssh(1), a given user takes precedence over the config
 	c.User = get("User")
+	if user != "" {
+		c.User = user
+	}
+	c.ensureUser()
 	sub["%r"] = c.User
 	c.Port, _ = strconv.Atoi(get("Port"))
 	sub["%p"] = fmt.Sprintf("%d", c.Port)
@@ -162,10 +167,7 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 			return nil, fmt.Errorf("could not parse SSH config for %v: %v", j.host, err)
 		}
 
-		// Replace jump user & port if provided inline
-		if j.user != "" {
-			jc.User = j.user
-		}
+		// Replace jump port if provided inline
 		if j.port != 0 {
 			jc.Port = j.port
 		}
@@ -174,8 +176,6 @@ func (sc *SSHConfig) toHopsImpl(ignoreIntermediate bool, depth int) ([]Hop, erro
 		if jc.HostName == "" {
 			jc.HostName = j.host
 		}
-
-		jc.EnsureUser()
 
 		// Recursively connect to first jump host, ignore jumps for subsequent connections;
 		// this corresponds to ssh(1) behavior
@@ -396,7 +396,7 @@ func (sc *SSHConfig) validate() error {
 	return nil
 }
 
-func (sc *SSHConfig) EnsureUser() {
+func (sc *SSHConfig) ensureUser() {
 	// Like ssh(1), use $USER if no user specified
 	if sc.User == "" {
 		if u, err := user.Current(); err == nil {
