@@ -8,11 +8,7 @@ Host wap
   User root
   KexAlgorithms diffie-hellman-group1-sha1
 
-Host [some stuff behind a NAT]
-  Compression yes
-  ProxyCommand ssh -qW %h:%p [NATrouter]
-
-Host wopr # there are 2 proxies available for this one...
+Host proxied # Two fallback proxies
   User root
   ProxyCommand sh -c "ssh proxy1 -qW %h:22 || ssh proxy2 -qW %h:22"
 
@@ -20,11 +16,6 @@ Host dhcp-??
   UserKnownHostsFile /dev/null
   StrictHostKeyChecking no
   User root
-
-Host [my boxes] [*.mydomain]
-  ForwardAgent yes
-  ForwardX11 yes
-  ForwardX11Trusted yes
 
 Host *
   #ControlMaster auto

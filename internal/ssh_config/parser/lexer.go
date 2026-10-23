@@ -35,7 +35,7 @@ func (s *sshLexer) lexComment(previousState sshLexStateFn) sshLexStateFn {
 	}
 }
 
-// lex the space after an equals sign
+// lexRspace skips the space after an equals sign
 func (s *sshLexer) lexRspace() sshLexStateFn {
 	for {
 		next := s.peek()
@@ -256,7 +256,7 @@ const (
 	tokenString
 )
 
-// position of a token within a config file, 1-indexed.
+// position of a token within a config file, 1-indexed
 type position struct {
 	line, col int
 }

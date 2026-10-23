@@ -17,7 +17,7 @@ const maxIncludeDepth = 5
 
 // errDepthExceeded is returned if too many Include directives are nested,
 // which usually indicates an Include loop
-var errDepthExceeded = errors.New("ssh_config: max recurse depth exceeded")
+var errDepthExceeded = errors.New("too many nested Include directives")
 
 var allowedMatchKeywords = []string{"host", "originalhost", "user", "localuser"}
 
@@ -128,7 +128,7 @@ func (p *sshParser) parseMatch(val *token) *block {
 	criteria := matchCriteria{}
 	args := strings.FieldsFunc(strings.ToLower(val.val), isSpace)
 	if len(args) == 0 {
-		p.raiseErrorf(val, "No criteria found after Match")
+		p.raiseErrorf(val, "no criteria found after Match")
 	}
 	for i := 0; i < len(args); i++ {
 		switch k := args[i]; k {
@@ -144,11 +144,11 @@ func (p *sshParser) parseMatch(val *token) *block {
 			}
 		default:
 			if !slices.Contains(allowedMatchKeywords, k) {
-				p.raiseErrorf(val, "Match keyword not supported: %v", k)
+				p.raiseErrorf(val, "unsupported Match keyword %q", k)
 			}
 			i++
 			if i >= len(args) {
-				p.raiseErrorf(val, "No value found after Match keyword %q", k)
+				p.raiseErrorf(val, "no value found after Match keyword %q", k)
 			}
 			criteria[k] = newPattern(args[i])
 		}
@@ -167,7 +167,7 @@ func (p *sshParser) parseInclude(val *token) include {
 	for d := range strings.FieldsFuncSeq(val.val, isSpace) {
 		matches, err := filepath.Glob(p.includePath(d))
 		if err != nil {
-			p.raiseErrorf(val, "Error parsing Include directive: %v", err)
+			p.raiseErrorf(val, "could not parse Include directive: %v", err)
 		}
 		for _, m := range matches {
 			if seen[m] {
@@ -179,7 +179,7 @@ func (p *sshParser) parseInclude(val *token) include {
 				panic(err)
 			}
 			if err != nil {
-				p.raiseErrorf(val, "Error parsing Include directive: %v", err)
+				p.raiseErrorf(val, "could not parse Include directive: %v", err)
 			}
 			inc = append(inc, c)
 		}

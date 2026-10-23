@@ -5,11 +5,11 @@ Host testhost
 Host testhost
     User testuser2
 
-# this should match
+# Matches, the first User wins
 Match user testuser
     Port 1111
     IdentityFile b
 
-# this not
+# Does not match
 Match user testuser2
     Port 4444

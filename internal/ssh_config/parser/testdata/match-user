@@ -1,6 +1,6 @@
 Host testhost
-    # this should not match as user should be set from the caller
-    User dummy
+    # Ignored for matching, the user given by the caller takes precedence
+    User other
 
 Match host testhost user testuser
     HostName hostname

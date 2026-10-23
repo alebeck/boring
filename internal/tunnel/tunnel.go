@@ -125,7 +125,7 @@ func (t *Tunnel) prepare() error {
 		}
 	}
 
-	// User and port override the config, the user is also needed for
+	// User and port override the config, and the user is also needed for
 	// matching Match blocks
 	sc, err := ssh_config.ParseSSHConfig(t.Host, t.User, port)
 	if err != nil {
