@@ -183,3 +183,22 @@ func TestParseSSHConfigTokens(t *testing.T) {
 		}
 	}
 }
+
+func TestAgentSock(t *testing.T) {
+	t.Setenv("HOME", "/home/u")
+	t.Setenv("SSH_AUTH_SOCK", "/tmp/default.sock")
+	t.Setenv("MY_SOCK", "/tmp/my.sock")
+
+	for in, want := range map[string]string{
+		"":                    "/tmp/default.sock",
+		"SSH_AUTH_SOCK":       "/tmp/default.sock",
+		"$MY_SOCK":            "/tmp/my.sock",
+		"${HOME}/agent.sock":  "/home/u/agent.sock",
+		"~/agent.sock":        "/home/u/agent.sock",
+		"/path/to/agent.sock": "/path/to/agent.sock",
+	} {
+		if got := agentSock(in); got != want {
+			t.Errorf("agentSock(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

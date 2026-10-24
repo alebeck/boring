@@ -50,6 +50,7 @@ type SSHConfig struct {
 	HostName         string
 	Port             int
 	KeyCheck         keyCheck
+	IdentityAgent    string
 	IdentitiesOnly   bool
 	IdentityFiles    []string
 	CertificateFiles []string
@@ -133,6 +134,7 @@ func ParseSSHConfig(alias, user string, port int) (*SSHConfig, error) {
 
 	c.IdentitiesOnly = get("IdentitiesOnly") == "yes"
 	c.IdentityFiles = sub.applyAll(getAll("IdentityFile"), identFileTokens)
+	c.IdentityAgent = sub.apply(get("IdentityAgent"), identFileTokens)
 	c.CertificateFiles = sub.applyAll(getAll("CertificateFile"), identFileTokens)
 
 	// Known hosts
@@ -248,7 +250,11 @@ func (sc *SSHConfig) loadIDs() (fileIDs, agentCertIDs, agentCfgIDs, agentOtherID
 		}
 	}
 
-	if agSigs, err := agent.GetSigners(); err != nil {
+	if sc.IdentityAgent == "none" {
+		return
+	}
+
+	if agSigs, err := agent.GetSigners(agentSock(sc.IdentityAgent)); err != nil {
 		log.Warningf("Unable to get keys from ssh-agent: %v", err)
 	} else {
 		for _, s := range agSigs {
@@ -427,6 +433,13 @@ func loadIdentity(f string) (signer ssh.Signer, fp string, ok bool) {
 		return nil, keyFP(pub), true
 	}
 	return nil, "", false
+}
+
+func agentSock(v string) string {
+	if v == "" || v == "SSH_AUTH_SOCK" {
+		return os.Getenv("SSH_AUTH_SOCK")
+	}
+	return paths.ReplaceTilde(os.ExpandEnv(v))
 }
 
 func loadPrivateKey(path string) (ssh.Signer, error) {

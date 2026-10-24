@@ -3,7 +3,6 @@ package agent
 import (
 	"fmt"
 	"net"
-	"os"
 	"sync"
 
 	"golang.org/x/crypto/ssh"
@@ -11,22 +10,21 @@ import (
 )
 
 var (
-	// Keep a single agent instance for all connection attempts
-	inst agent.ExtendedAgent
-	mu   sync.Mutex
+	// Keep one agent client per socket for all connection attempts
+	clients = map[string]agent.ExtendedAgent{}
+	mu      sync.Mutex
 )
 
-func getAgent() (agent.ExtendedAgent, error) {
+func getAgent(sock string) (agent.ExtendedAgent, error) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if inst != nil {
-		return inst, nil
+	if c, ok := clients[sock]; ok {
+		return c, nil
 	}
 
-	sock := os.Getenv("SSH_AUTH_SOCK")
 	if sock == "" {
-		return nil, fmt.Errorf("SSH_AUTH_SOCK is not set")
+		return nil, fmt.Errorf("agent socket not set (SSH_AUTH_SOCK or IdentityAgent)")
 	}
 
 	conn, err := net.Dial("unix", sock)
@@ -34,12 +32,13 @@ func getAgent() (agent.ExtendedAgent, error) {
 		return nil, fmt.Errorf("could not dial agent: %v", err)
 	}
 
-	inst = agent.NewClient(conn)
-	return inst, nil
+	c := agent.NewClient(conn)
+	clients[sock] = c
+	return c, nil
 }
 
-func GetSigners() ([]ssh.Signer, error) {
-	agent, err := getAgent()
+func GetSigners(sock string) ([]ssh.Signer, error) {
+	agent, err := getAgent(sock)
 	if err != nil {
 		return nil, err
 	}
