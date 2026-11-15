@@ -165,7 +165,11 @@ func (p *sshParser) parseInclude(val *token) include {
 	var inc include
 	seen := map[string]bool{}
 	for d := range strings.FieldsFuncSeq(val.val, isSpace) {
-		matches, err := filepath.Glob(p.includePath(d))
+		path, err := paths.ExpandEnv(d)
+		if err != nil {
+			p.raiseErrorf(val, "could not parse Include directive: %v", err)
+		}
+		matches, err := filepath.Glob(p.includePath(path))
 		if err != nil {
 			p.raiseErrorf(val, "could not parse Include directive: %v", err)
 		}

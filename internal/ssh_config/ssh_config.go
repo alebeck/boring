@@ -133,18 +133,54 @@ func ParseSSHConfig(alias, user string, port int) (*SSHConfig, error) {
 	}
 
 	c.IdentitiesOnly = get("IdentitiesOnly") == "yes"
-	c.IdentityFiles = sub.applyAll(getAll("IdentityFile"), identFileTokens)
-	c.IdentityAgent = sub.apply(get("IdentityAgent"), identFileTokens)
-	c.CertificateFiles = sub.applyAll(getAll("CertificateFile"), identFileTokens)
-
-	// Known hosts
-	hosts := getAll("GlobalKnownHostsFile")
-	hosts = append(hosts, sub.applyAll(getAll("UserKnownHostsFile"), identFileTokens)...)
-	for _, h := range hosts {
-		c.KnownHostsFiles = append(c.KnownHostsFiles, strings.Split(h, " ")...)
+	if err := c.setPaths(getAll, sub); err != nil {
+		return nil, err
 	}
 
 	return c, nil
+}
+
+// setPaths sets the identity, certificate, agent and known hosts paths. Like
+// ssh(1), tokens and ${VAR} environment variables are expanded.
+func (c *SSHConfig) setPaths(getAll func(string) []string, sub subst) error {
+	getPaths := func(key string) ([]string, error) {
+		vals := sub.applyAll(getAll(key), identFileTokens)
+		for i := range vals {
+			v, err := paths.ExpandEnv(vals[i])
+			if err != nil {
+				return nil, fmt.Errorf("%s: %v", key, err)
+			}
+			vals[i] = v
+		}
+		return vals, nil
+	}
+
+	var err error
+	if c.IdentityFiles, err = getPaths("IdentityFile"); err != nil {
+		return err
+	}
+	if c.CertificateFiles, err = getPaths("CertificateFile"); err != nil {
+		return err
+	}
+	agents, err := getPaths("IdentityAgent")
+	if err != nil {
+		return err
+	}
+	if len(agents) > 0 {
+		c.IdentityAgent = agents[0]
+	}
+
+	// Known hosts
+	userHosts, err := getPaths("UserKnownHostsFile")
+	if err != nil {
+		return err
+	}
+	hosts := getAll("GlobalKnownHostsFile")
+	hosts = append(hosts, userHosts...)
+	for _, h := range hosts {
+		c.KnownHostsFiles = append(c.KnownHostsFiles, strings.Split(h, " ")...)
+	}
+	return nil
 }
 
 // ToHops creates an ordered series of Hops from an SSHConfig
@@ -439,7 +475,11 @@ func agentSock(v string) string {
 	if v == "" || v == "SSH_AUTH_SOCK" {
 		return os.Getenv("SSH_AUTH_SOCK")
 	}
-	return paths.ReplaceTilde(os.ExpandEnv(v))
+	// Like ssh(1), a value of $VAR names the variable holding the socket
+	if name, ok := strings.CutPrefix(v, "$"); ok {
+		return os.Getenv(name)
+	}
+	return paths.ReplaceTilde(v)
 }
 
 func loadPrivateKey(path string) (ssh.Signer, error) {

@@ -156,8 +156,11 @@ func TestInclude(t *testing.T) {
 	writeFile(t, filepath.Join(home, ".ssh", "conf.d", "a"), "Host glob\n  Port 4444\n  IdentityFile a\n")
 	writeFile(t, filepath.Join(home, ".ssh", "conf.d", "b"), "Host glob\n  Port 5555\n  IdentityFile b\n")
 	writeFile(t, filepath.Join(home, ".ssh", "final"), "Port 6666\n")
+	writeFile(t, filepath.Join(home, "env"), "Host env\n  Port 7777\n")
+	t.Setenv("TEST_DIR", home)
 	cfg := filepath.Join(home, "config")
 	writeFile(t, cfg, "Include relative ~/tilde "+abs+" conf.d/*  # comment\n"+
+		"Include ${TEST_DIR}/env\n"+
 		"Match final all\n  Include final\n")
 
 	s, err := Load(cfg)
@@ -166,7 +169,7 @@ func TestInclude(t *testing.T) {
 	}
 	ports := map[string]string{
 		"relative": "1111", "tilde": "2222", "absolute": "3333",
-		"glob": "4444", "other": "6666",
+		"glob": "4444", "env": "7777", "other": "6666",
 	}
 	for alias, want := range ports {
 		if got := s.Get(alias, "Port", ""); got != want {
@@ -192,6 +195,7 @@ func TestParseErrors(t *testing.T) {
 		"Match exec true\n",
 		"Match user\n",
 		"Match host a all\n",
+		"Include ${TEST_UNSET}/config\n",
 	} {
 		cfg := filepath.Join(t.TempDir(), "config")
 		writeFile(t, cfg, content)
