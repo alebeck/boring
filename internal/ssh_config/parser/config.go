@@ -238,6 +238,9 @@ func (m matchCriteria) matches(ctx *matchContext) bool {
 			v = ctx.originalHost
 		case "localuser":
 			v = ctx.localUser
+		case "tagged":
+			// Set only by a Tag directive, boring has no ssh -P equivalent
+			v = ctx.tag
 		}
 		// An empty value never matches
 		if v == "" || p.not == p.regex.MatchString(v) {
@@ -270,6 +273,7 @@ type matchContext struct {
 	host         string
 	localUser    string
 	originalHost string
+	tag          string
 	finalBlocks  []*block
 }
 
@@ -281,7 +285,7 @@ func newMatchContext(alias, user string) *matchContext {
 	return ctx
 }
 
-// update records user and host names set by matching blocks
+// update records user and host names and the tag set by matching blocks
 func (ctx *matchContext) update(key, val string) {
 	switch {
 	case key == "user" && ctx.user == "":
@@ -289,6 +293,8 @@ func (ctx *matchContext) update(key, val string) {
 	case key == "hostname" && ctx.host == "":
 		// HostName may refer to the alias as %h
 		ctx.host = strings.NewReplacer("%%", "%", "%h", ctx.originalHost).Replace(val)
+	case key == "tag" && ctx.tag == "":
+		ctx.tag = val
 	}
 }
 
