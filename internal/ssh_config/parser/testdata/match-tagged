@@ -1,0 +1,15 @@
+Host tagged
+    Tag work
+
+Host tagged-twice
+    Tag work
+    Tag other
+
+Match tagged work
+    Port 1111
+
+Match tagged other
+    Port 2222
+
+Host *
+    Port 3333

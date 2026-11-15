@@ -19,7 +19,7 @@ const maxIncludeDepth = 5
 // which usually indicates an Include loop
 var errDepthExceeded = errors.New("too many nested Include directives")
 
-var allowedMatchKeywords = []string{"host", "originalhost", "user", "localuser"}
+var allowedMatchKeywords = []string{"host", "originalhost", "user", "localuser", "tagged"}
 
 type sshParser struct {
 	flow   chan token
