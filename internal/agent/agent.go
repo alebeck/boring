@@ -2,7 +2,6 @@ package agent
 
 import (
 	"fmt"
-	"net"
 	"sync"
 
 	"golang.org/x/crypto/ssh"
@@ -16,6 +15,13 @@ var (
 )
 
 func getAgent(sock string) (agent.ExtendedAgent, error) {
+	if sock == "" {
+		sock = defaultSock
+	}
+	if sock == "" {
+		return nil, fmt.Errorf("agent socket not set (SSH_AUTH_SOCK or IdentityAgent)")
+	}
+
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -23,11 +29,7 @@ func getAgent(sock string) (agent.ExtendedAgent, error) {
 		return c, nil
 	}
 
-	if sock == "" {
-		return nil, fmt.Errorf("agent socket not set (SSH_AUTH_SOCK or IdentityAgent)")
-	}
-
-	conn, err := net.Dial("unix", sock)
+	conn, err := dial(sock)
 	if err != nil {
 		return nil, fmt.Errorf("could not dial agent: %v", err)
 	}
