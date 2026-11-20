@@ -40,12 +40,16 @@ func startAgent(sock string) (context.CancelFunc, error) {
 	}
 
 	// Accept loop
+	var conns []net.Conn
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		for {
 			c, err := ln.Accept()
 			if err != nil {
 				return
 			}
+			conns = append(conns, c)
 			go func() {
 				defer c.Close()
 				agent.ServeAgent(kr, c)
@@ -53,8 +57,13 @@ func startAgent(sock string) (context.CancelFunc, error) {
 		}
 	}()
 
+	// Like a stopped agent, close all client connections
 	cancel := func() {
 		ln.Close()
+		<-done
+		for _, c := range conns {
+			c.Close()
+		}
 	}
 	return cancel, nil
 }
