@@ -199,6 +199,7 @@ func TestParseSSHConfigTokens(t *testing.T) {
 
 func TestAgentSock(t *testing.T) {
 	t.Setenv("HOME", "/home/u")
+	t.Setenv("USERPROFILE", "/home/u") // home directory on Windows
 	t.Setenv("SSH_AUTH_SOCK", "/tmp/default.sock")
 	t.Setenv("MY_SOCK", "/tmp/my.sock")
 
@@ -206,7 +207,7 @@ func TestAgentSock(t *testing.T) {
 		"":                    "/tmp/default.sock",
 		"SSH_AUTH_SOCK":       "/tmp/default.sock",
 		"$MY_SOCK":            "/tmp/my.sock",
-		"~/agent.sock":        "/home/u/agent.sock",
+		"~/agent.sock":        filepath.Join("/home/u", "agent.sock"),
 		"/path/to/agent.sock": "/path/to/agent.sock",
 	} {
 		if got := agentSock(in); got != want {

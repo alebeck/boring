@@ -43,3 +43,7 @@ jobs:
         env:
           DEBUG: 1
           BORING_FORCE_INTERACTIVE: 1
+
+      - name: Run tests
+        shell: bash
+        run: make test

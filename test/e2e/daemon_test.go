@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -17,23 +16,12 @@ import (
 	"github.com/alebeck/boring/internal/tunnel"
 )
 
-func pidRunning(pid int) bool {
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	// See https://pkg.go.dev/os#FindProcess
-	err = proc.Signal(syscall.Signal(0))
-	return err == nil
-}
-
-func killPID(pid int) error {
+func killPID(pid int, sock string) error {
 	proc, err := os.FindProcess(pid)
 	if err != nil {
 		return err
 	}
-	// daemon will shut down gracefully, emitting coverage data
-	return proc.Signal(syscall.SIGTERM)
+	return stopDaemon(proc, sock)
 }
 
 func testDaemonLaunch(t *testing.T, env []string) string {
@@ -61,7 +49,8 @@ func testDaemonLaunch(t *testing.T, env []string) string {
 		t.Fatalf("pid %d not running", pid)
 	}
 
-	if err := killPID(pid); err != nil {
+	sock := getEnv(env, "BORING_SOCK")
+	if err := killPID(pid, sock); err != nil {
 		t.Fatalf("failed to kill daemon: %v", err)
 	}
 
@@ -75,7 +64,6 @@ func testDaemonLaunch(t *testing.T, env []string) string {
 		t.Fatalf("pid %d running", pid)
 	}
 
-	sock := getEnv(env, "BORING_SOCK")
 	if _, err = os.Stat(sock); err == nil {
 		t.Fatalf("sock file exists after termination: %v", err)
 	}

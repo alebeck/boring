@@ -3,6 +3,7 @@ package e2e
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -60,6 +61,9 @@ func TestConfigCreateMkdirFails(t *testing.T) {
 }
 
 func TestConfigCreateOpenFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not enforce directory permissions")
+	}
 	cfg := defaultConfig
 	// Pre-create a read-only parent directory so OpenFile with O_CREATE fails
 	// while MkdirAll on the existing dir succeeds.
@@ -95,9 +99,12 @@ func TestEdit(t *testing.T) {
 		t.Fatalf("%v", err.Error())
 	}
 
-	tmpEditor := t.TempDir() + "/boring-editor.sh"
-	if err := os.WriteFile(tmpEditor,
-		[]byte("#!/bin/sh\necho $1"), 0755); err != nil {
+	name, script := "boring-editor.sh", "#!/bin/sh\necho $1"
+	if runtime.GOOS == "windows" {
+		name, script = "boring-editor.bat", "@echo %1"
+	}
+	tmpEditor := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(tmpEditor, []byte(script), 0755); err != nil {
 		t.Fatalf("failed to create temporary editor script: %v", err)
 	}
 	env = append(env, "EDITOR="+tmpEditor)

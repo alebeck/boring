@@ -149,6 +149,7 @@ func TestHostPatterns(t *testing.T) {
 func TestInclude(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // home directory on Windows
 	writeFile(t, filepath.Join(home, ".ssh", "relative"), "Host relative\n  Port 1111\n")
 	writeFile(t, filepath.Join(home, "tilde"), "Host tilde\n  Port 2222\n")
 	abs := filepath.Join(home, "absolute")

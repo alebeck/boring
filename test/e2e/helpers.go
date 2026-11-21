@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -65,6 +64,7 @@ func makeEnv(c config, t *testing.T) ([]string, error) {
 		"BORING_COMMIT_OVERRIDE="+c.commitOverride,
 		"BORING_TAG_OVERRIDE="+c.tagOverride,
 		"HOME="+tmpDir,
+		"USERPROFILE="+tmpDir, // home directory on Windows
 	)
 
 	if c.noSpawn {
@@ -123,8 +123,12 @@ func daemonWithCancel(env []string) (context.CancelFunc, error) {
 		close(exited)
 	}()
 
+	sock := getEnv(env, "BORING_SOCK")
 	cancel := func() {
-		cmd.Process.Signal(syscall.SIGTERM)
+		// Kill the daemon if it cannot be stopped, e.g. as it never came up
+		if stopDaemon(cmd.Process, sock) != nil {
+			cmd.Process.Kill()
+		}
 		<-exited
 	}
 
@@ -132,7 +136,6 @@ func daemonWithCancel(env []string) (context.CancelFunc, error) {
 	wait := time.NewTimer(0.)
 	waitTime := 2 * time.Millisecond
 	timeout := time.After(daemonStartTimeout)
-	sock := getEnv(env, "BORING_SOCK")
 
 	for {
 		select {
