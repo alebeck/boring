@@ -21,9 +21,8 @@ func pidRunning(pid int) bool {
 	return ev == syscall.WAIT_TIMEOUT
 }
 
-// stopDaemon makes the daemon shut down gracefully. Windows cannot signal
-// processes, so the shutdown command is sent instead.
 func stopDaemon(_ *os.Process, sock string) error {
+	// Windows cannot signal processes, so send the shutdown command
 	conn, err := net.Dial("unix", sock)
 	if err != nil {
 		return err

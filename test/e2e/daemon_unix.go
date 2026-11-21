@@ -17,7 +17,7 @@ func pidRunning(pid int) bool {
 	return err == nil
 }
 
-// stopDaemon makes the daemon shut down gracefully, emitting coverage data
 func stopDaemon(proc *os.Process, _ string) error {
+	// daemon will shut down gracefully, emitting coverage data
 	return proc.Signal(syscall.SIGTERM)
 }
