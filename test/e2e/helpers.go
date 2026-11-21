@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -76,7 +77,11 @@ func makeEnv(c config, t *testing.T) ([]string, error) {
 	}
 
 	if c.useAgent {
-		env = append(env, "SSH_AUTH_SOCK="+filepath.Join(tmpDir, "agent.sock"))
+		sock := filepath.Join(tmpDir, "agent.sock")
+		if runtime.GOOS == "windows" {
+			sock = `\\.\pipe\boring-test-` + t.Name()
+		}
+		env = append(env, "SSH_AUTH_SOCK="+sock)
 	} else {
 		env = append(env, "SSH_AUTH_SOCK=doesnotexist")
 	}

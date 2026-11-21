@@ -33,8 +33,8 @@ func startAgent(sock string) (context.CancelFunc, error) {
 		return nil, err
 	}
 
-	// Create a Unix socket and serve the agent.
-	ln, err := net.Listen("unix", sock)
+	// Listen on the socket and serve the agent.
+	ln, err := listenAgent(sock)
 	if err != nil {
 		return nil, err
 	}
