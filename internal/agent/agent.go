@@ -9,7 +9,8 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 )
 
-// conn connects to the agent at sock for every request
+// conn connects to the agent at sock for every request. It must not implement
+// io.Closer, as the agent client would then read from it in the background.
 type conn struct {
 	sock string
 	rwc  io.ReadWriteCloser
