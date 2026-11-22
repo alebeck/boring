@@ -8,6 +8,9 @@ import (
 	"os"
 	"strings"
 	"syscall"
+	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 // defaultSock is the named pipe Windows OpenSSH uses if SSH_AUTH_SOCK is not
@@ -24,11 +27,18 @@ func dial(sock string) (io.ReadWriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Open for overlapped I/O, so the handle is served by the runtime poller
-	h, err := syscall.CreateFile(name, syscall.GENERIC_READ|syscall.GENERIC_WRITE,
-		0, nil, syscall.OPEN_EXISTING, syscall.FILE_FLAG_OVERLAPPED, 0)
-	if err != nil {
-		return nil, &os.PathError{Op: "open", Path: sock, Err: err}
+	// The pipe is busy until the agent created its next instance, so retry
+	deadline := time.Now().Add(time.Second)
+	for {
+		// Open for overlapped I/O, so the handle is served by the runtime poller
+		h, err := syscall.CreateFile(name, syscall.GENERIC_READ|syscall.GENERIC_WRITE,
+			0, nil, syscall.OPEN_EXISTING, syscall.FILE_FLAG_OVERLAPPED, 0)
+		if err == nil {
+			return os.NewFile(uintptr(h), sock), nil
+		}
+		if err != windows.ERROR_PIPE_BUSY || time.Now().After(deadline) {
+			return nil, &os.PathError{Op: "open", Path: sock, Err: err}
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	return os.NewFile(uintptr(h), sock), nil
 }
