@@ -1,1 +1,1 @@
-<!-- Thanks for contributing to `boring`! Please read CONTRIBUTING.md first before creating a PR. -->
+<!-- Thanks for your `boring` contribution! Please read CONTRIBUTING.md first before creating a PR. -->
