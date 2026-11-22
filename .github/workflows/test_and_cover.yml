@@ -56,7 +56,7 @@ jobs:
       # Hyper-V reserves random port ranges, which can include the test ports
       - name: Release reserved ports
         run: |
-          net stop winnat
+          if ((Get-Service winnat).Status -eq 'Running') { net stop winnat }
           netsh int ipv4 show excludedportrange protocol=tcp
 
       - name: Run tests
