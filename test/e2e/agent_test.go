@@ -44,7 +44,10 @@ func TestAgentReconnect(t *testing.T) {
 		t.Fatalf("%v", err.Error())
 	}
 	defer cancel()
+	testAgentReconnect(t, env)
+}
 
+func testAgentReconnect(t *testing.T, env []string) {
 	// (Re-)starting the agent closes the daemon's connection to it
 	stop := func() {}
 	defer func() { stop() }()

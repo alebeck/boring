@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -52,8 +51,13 @@ func makeEnv(c config, t *testing.T) ([]string, error) {
 	tmpDir := t.TempDir()
 	logFile := filepath.Join(tmpDir, "boringd.log")
 	sockFile := filepath.Join(tmpDir, "boringd.sock")
-	// fmt.Printf("daemon logs at: %s\n", logFile)
-	// fmt.Printf("daemon socket at: %s\n", sockFile)
+
+	t.Cleanup(func() {
+		if t.Failed() {
+			log, _ := os.ReadFile(logFile)
+			t.Logf("daemon log:\n%s", log)
+		}
+	})
 
 	env := append(
 		os.Environ(),
@@ -77,11 +81,7 @@ func makeEnv(c config, t *testing.T) ([]string, error) {
 	}
 
 	if c.useAgent {
-		sock := filepath.Join(tmpDir, "agent.sock")
-		if runtime.GOOS == "windows" {
-			sock = `\\.\pipe\boring-test-` + t.Name()
-		}
-		env = append(env, "SSH_AUTH_SOCK="+sock)
+		env = append(env, "SSH_AUTH_SOCK="+filepath.Join(tmpDir, "agent.sock"))
 	} else {
 		env = append(env, "SSH_AUTH_SOCK=doesnotexist")
 	}
