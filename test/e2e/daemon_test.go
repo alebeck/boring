@@ -16,14 +16,6 @@ import (
 	"github.com/alebeck/boring/internal/tunnel"
 )
 
-func killPID(pid int, sock string) error {
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return err
-	}
-	return stopDaemon(proc, sock)
-}
-
 func testDaemonLaunch(t *testing.T, env []string) string {
 	c, out, err := cliCommand(env, "list")
 	if err != nil {
@@ -50,8 +42,12 @@ func testDaemonLaunch(t *testing.T, env []string) string {
 	}
 
 	sock := getEnv(env, "BORING_SOCK")
-	if err := killPID(pid, sock); err != nil {
-		t.Fatalf("failed to kill daemon: %v", err)
+	proc, err := os.FindProcess(pid)
+	if err == nil {
+		err = stopDaemon(proc, sock)
+	}
+	if err != nil {
+		t.Fatalf("failed to stop daemon: %v", err)
 	}
 
 	// Finally check for graceful termination. Poll instead of sleeping a
