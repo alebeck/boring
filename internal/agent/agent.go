@@ -9,44 +9,27 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 )
 
-// conn is a connection to the agent at sock, which is (re-)established on
-// demand, as agents may close it at any time, e.g. when they get locked.
-//
-// It must not implement io.Closer, since the agent client would then read
-// from it in the background, rather than once per request.
+// conn connects to the agent at sock for every request
 type conn struct {
 	sock string
 	rwc  io.ReadWriteCloser
 }
 
 func (c *conn) Write(p []byte) (n int, err error) {
-	// Writing fails if the agent closed the connection, so try a new one then
 	if c.rwc != nil {
-		if n, err = c.do(c.rwc.Write, p); err == nil {
-			return n, nil
-		}
+		c.rwc.Close()
 	}
 	if c.rwc, err = dial(c.sock); err != nil {
 		return 0, err
 	}
-	return c.do(c.rwc.Write, p)
+	return c.rwc.Write(p)
 }
 
 func (c *conn) Read(p []byte) (int, error) {
 	if c.rwc == nil {
 		return 0, io.ErrClosedPipe
 	}
-	return c.do(c.rwc.Read, p)
-}
-
-// do closes the connection if op fails, so the next request uses a new one
-func (c *conn) do(op func([]byte) (int, error), p []byte) (int, error) {
-	n, err := op(p)
-	if err != nil {
-		c.rwc.Close()
-		c.rwc = nil
-	}
-	return n, err
+	return c.rwc.Read(p)
 }
 
 var (
