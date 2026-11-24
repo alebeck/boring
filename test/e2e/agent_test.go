@@ -33,6 +33,49 @@ func TestAgent(t *testing.T) {
 	}
 }
 
+// Agents may close the connection at any time, which must neither affect
+// opening a tunnel nor re-connecting one.
+func TestAgentReconnect(t *testing.T) {
+	cfg := defaultConfig
+	cfg.sshConfig = "../testdata/config/ssh_config_no_id"
+	cfg.useAgent = true
+	env, cancel, err := makeEnvWithDaemon(cfg, t)
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	defer cancel()
+	testAgentReconnect(t, env)
+}
+
+func testAgentReconnect(t *testing.T, env []string) {
+	// (Re-)starting the agent closes the daemon's connection to it
+	stop := func() {}
+	defer func() { stop() }()
+	restart := func() {
+		stop()
+		s, err := startAgent(getEnv(env, "SSH_AUTH_SOCK"))
+		if err != nil {
+			t.Fatalf("could not start agent: %v", err)
+		}
+		stop = s
+	}
+
+	restart()
+	mustRun(t, env, "open", "test")
+	mustRun(t, env, "close", "test")
+
+	restart()
+	mustRun(t, env, "open", "test")
+
+	// A re-connecting tunnel uses the keys it got from the agent on open
+	restart()
+	server.pause()
+	server.closeAll()
+	waitForStatus(t, env, "reconn", func(s string) bool { return s == "reconn" })
+	server.resume()
+	waitForStatus(t, env, "open", openStatus.MatchString)
+}
+
 // `IdentityFile foo.pub` + `IdentitiesOnly yes` must auth via the agent's
 // matching private key.
 func TestAgentPubIdentityFile(t *testing.T) {

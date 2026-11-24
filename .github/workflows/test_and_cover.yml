@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-and-cover:
+  test-and-cover-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,7 +24,19 @@ jobs:
           file: cover_lines.out
           format: golang
 
-  smoke-test-windows:
+  test-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.25
+
+      - name: Run tests
+        run: make test
+
+  smoke-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,3 +55,22 @@ jobs:
         env:
           DEBUG: 1
           BORING_FORCE_INTERACTIVE: 1
+
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.25
+
+      # Hyper-V reserves random port ranges, which can include the test ports
+      - name: Release reserved ports
+        run: |
+          if ((Get-Service winnat).Status -eq 'Running') { net stop winnat }
+          netsh int ipv4 show excludedportrange protocol=tcp
+
+      - name: Run tests
+        shell: bash
+        run: make test

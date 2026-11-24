@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -52,8 +51,13 @@ func makeEnv(c config, t *testing.T) ([]string, error) {
 	tmpDir := t.TempDir()
 	logFile := filepath.Join(tmpDir, "boringd.log")
 	sockFile := filepath.Join(tmpDir, "boringd.sock")
-	// fmt.Printf("daemon logs at: %s\n", logFile)
-	// fmt.Printf("daemon socket at: %s\n", sockFile)
+
+	t.Cleanup(func() {
+		if t.Failed() {
+			log, _ := os.ReadFile(logFile)
+			t.Logf("daemon log:\n%s", log)
+		}
+	})
 
 	env := append(
 		os.Environ(),
@@ -65,6 +69,7 @@ func makeEnv(c config, t *testing.T) ([]string, error) {
 		"BORING_COMMIT_OVERRIDE="+c.commitOverride,
 		"BORING_TAG_OVERRIDE="+c.tagOverride,
 		"HOME="+tmpDir,
+		"USERPROFILE="+tmpDir, // home directory on Windows
 	)
 
 	if c.noSpawn {
@@ -123,8 +128,12 @@ func daemonWithCancel(env []string) (context.CancelFunc, error) {
 		close(exited)
 	}()
 
+	sock := getEnv(env, "BORING_SOCK")
 	cancel := func() {
-		cmd.Process.Signal(syscall.SIGTERM)
+		// Kill the daemon if it cannot be stopped, e.g. as it never came up
+		if stopDaemon(cmd.Process, sock) != nil {
+			cmd.Process.Kill()
+		}
 		<-exited
 	}
 
@@ -132,7 +141,6 @@ func daemonWithCancel(env []string) (context.CancelFunc, error) {
 	wait := time.NewTimer(0.)
 	waitTime := 2 * time.Millisecond
 	timeout := time.After(daemonStartTimeout)
-	sock := getEnv(env, "BORING_SOCK")
 
 	for {
 		select {
