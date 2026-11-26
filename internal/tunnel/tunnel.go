@@ -182,7 +182,7 @@ func (t *Tunnel) makeClient() error {
 
 	// Connect through all jump hosts
 	for _, j := range t.hops {
-		addr := fmt.Sprintf("%v:%v", j.HostName, j.Port)
+		addr := hopAddr(j)
 		n, err := wrapClient(c, addr, j.ClientConfig)
 		if err != nil {
 			safeClose(c)
@@ -210,6 +210,21 @@ func (t *Tunnel) makeClient() error {
 
 	t.client = c
 	return nil
+}
+
+// hopAddr formats the address of an SSH hop, quoting IPv6 literal
+// hosts as required by the address parser.
+func hopAddr(j ssh_config.Hop) string {
+	return joinHostPort(j.HostName, strconv.Itoa(j.Port))
+}
+
+// joinHostPort joins a host and a port, quoting IPv6 literal hosts. A
+// host that is already enclosed in brackets is passed through as-is.
+func joinHostPort(host, port string) string {
+	if strings.HasPrefix(host, "[") {
+		return host + ":" + port
+	}
+	return net.JoinHostPort(host, port)
 }
 
 func wrapClient(old *ssh.Client, addr string, conf *ssh.ClientConfig) (*ssh.Client, error) {
@@ -468,7 +483,7 @@ func parseAddrs(addr string, allowShort bool) ([]*address, error) {
 	}
 	addrs := make([]*address, len(ports))
 	for i, p := range ports {
-		addrs[i] = &address{host + ":" + p, "tcp"}
+		addrs[i] = &address{joinHostPort(host, p), "tcp"}
 	}
 	return addrs, nil
 }

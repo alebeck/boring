@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+
+	"github.com/alebeck/boring/internal/ssh_config"
 )
 
 // openTunnel returns a tunnel in the state Open leaves it in, without
@@ -13,6 +15,24 @@ func openTunnel() *Tunnel {
 		Desc:   &Desc{Name: "test", Status: Open},
 		stop:   make(chan struct{}),
 		Closed: make(chan struct{}),
+	}
+}
+
+func TestHopAddr(t *testing.T) {
+	tests := []struct {
+		hop  ssh_config.Hop
+		want string
+	}{
+		{ssh_config.Hop{HostName: "192.0.2.1", Port: 22}, "192.0.2.1:22"},
+		{ssh_config.Hop{HostName: "example.com", Port: 4222}, "example.com:4222"},
+		{ssh_config.Hop{HostName: "2001:db8::1", Port: 4222}, "[2001:db8::1]:4222"},
+		{ssh_config.Hop{HostName: "[2001:db8::1]", Port: 4222}, "[2001:db8::1]:4222"},
+	}
+	for _, c := range tests {
+		if got := hopAddr(c.hop); got != c.want {
+			t.Errorf("hopAddr(HostName: %q, Port: %v) = %q, want %q",
+				c.hop.HostName, c.hop.Port, got, c.want)
+		}
 	}
 }
 
@@ -82,6 +102,11 @@ func TestParseAddrs(t *testing.T) {
 		{"9000", true, []address{{"localhost:9000", "tcp"}}},
 		{"localhost:9000", false, []address{{"localhost:9000", "tcp"}}},
 		{"[::1]:9000", false, []address{{"[::1]:9000", "tcp"}}},
+		{"2001:db8::1:9000", false, []address{{"[2001:db8::1]:9000", "tcp"}}},
+		{"2001:db8::1:9000-9001", false, []address{
+			{"[2001:db8::1]:9000", "tcp"},
+			{"[2001:db8::1]:9001", "tcp"},
+		}},
 		{"/tmp/x.sock", false, []address{{"/tmp/x.sock", "unix"}}},
 		{"8000-8002,443", true, []address{
 			{"localhost:8000", "tcp"}, {"localhost:8001", "tcp"},
