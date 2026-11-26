@@ -1,0 +1,6 @@
+Match all
+    HostName ::1
+    Port 58391
+    User test
+    IdentityFile ../testdata/keys/client
+    StrictHostKeyChecking no

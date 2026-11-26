@@ -28,6 +28,26 @@ func TestSubstitutions(t *testing.T) {
 	}
 }
 
+// Test that an IPv6 literal HostName is dialed as a valid address, like
+// in ssh(1). Nothing listens there, so the connection itself fails.
+func TestIPv6HostName(t *testing.T) {
+	cfg := defaultConfig
+	cfg.sshConfig = "../testdata/config/ssh_config_ipv6"
+	env, cancel, err := makeEnvWithDaemon(cfg, t)
+	if err != nil {
+		t.Fatalf("%v", err.Error())
+	}
+	defer cancel()
+
+	_, out, err := cliCommand(env, "open", "test")
+	if err != nil {
+		t.Fatalf("failed to run CLI command: %v", err)
+	}
+	if !strings.Contains(out, "could not connect to host [::1]:58391") {
+		t.Errorf("host was not dialed as [::1]:58391: %s", out)
+	}
+}
+
 func TestRSA(t *testing.T) {
 	// TODO
 }
