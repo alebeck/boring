@@ -182,7 +182,7 @@ func (t *Tunnel) makeClient() error {
 
 	// Connect through all jump hosts
 	for _, j := range t.hops {
-		addr := fmt.Sprintf("%v:%v", j.HostName, j.Port)
+		addr := net.JoinHostPort(j.HostName, strconv.Itoa(j.Port))
 		n, err := wrapClient(c, addr, j.ClientConfig)
 		if err != nil {
 			safeClose(c)
